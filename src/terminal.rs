@@ -43,15 +43,15 @@ impl Frame {
             cells,
         }
     }
-    
+
     pub fn get_cell(&self, row: usize, col: usize) -> Option<&Cell> {
         self.cells.get(row).and_then(|r| r.get(col))
     }
-    
+
     pub fn get_cell_mut(&mut self, row: usize, col: usize) -> Option<&mut Cell> {
         self.cells.get_mut(row).and_then(|r| r.get_mut(col))
     }
-    
+
     pub fn clear(&mut self) {
         for row in &mut self.cells {
             for cell in row {
@@ -99,7 +99,7 @@ impl Emulator {
             parser: Parser::new(),
         }
     }
-    
+
     pub fn process(&mut self, input: &[u8]) {
         let mut parser = std::mem::take(&mut self.parser);
         for byte in input {
@@ -107,15 +107,15 @@ impl Emulator {
         }
         self.parser = parser;
     }
-    
+
     pub fn process_string(&mut self, data: &str) {
         self.process(data.as_bytes());
     }
-    
+
     pub fn get_frame(&self) -> Frame {
         self.grid.clone()
     }
-    
+
     fn write_char(&mut self, ch: char) {
         if let Some(cell) = self.grid.get_cell_mut(self.cursor.row, self.cursor.col) {
             cell.ch = ch;
@@ -125,7 +125,7 @@ impl Emulator {
             cell.italic = self.italic;
             cell.underline = self.underline;
         }
-        
+
         self.cursor.col += 1;
         if self.cursor.col >= self.grid.width {
             self.cursor.col = 0;
@@ -138,7 +138,7 @@ impl Emulator {
             }
         }
     }
-    
+
     fn parse_sgr_params(&mut self, params: &Params) {
         // Flatten params for easier lookahead parsing
         let mut vals: Vec<u16> = Vec::new();
@@ -263,7 +263,7 @@ impl Perform for Emulator {
     fn print(&mut self, c: char) {
         self.write_char(c);
     }
-    
+
     fn execute(&mut self, byte: u8) {
         match byte {
             b'\n' => {
@@ -294,23 +294,23 @@ impl Perform for Emulator {
             }
         }
     }
-    
+
     fn hook(&mut self, _params: &Params, _intermediates: &[u8], _ignore: bool, _c: char) {
         // Not needed for basic implementation
     }
-    
+
     fn put(&mut self, _byte: u8) {
         // Not needed for basic implementation
     }
-    
+
     fn unhook(&mut self) {
         // Not needed for basic implementation
     }
-    
+
     fn osc_dispatch(&mut self, _params: &[&[u8]], _bell_terminated: bool) {
         // OSC sequences (like setting window title) - not critical for SVG generation
     }
-    
+
     fn csi_dispatch(&mut self, params: &Params, _intermediates: &[u8], _ignore: bool, c: char) {
         match c {
             'm' => {
@@ -319,30 +319,40 @@ impl Perform for Emulator {
             }
             'H' | 'f' => {
                 // CUP - Cursor Position
-                let row = params.iter().nth(0)
-                    .and_then(|p| p.get(0))
+                let row = params
+                    .iter()
+                    .nth(0)
+                    .and_then(|p| p.first())
                     .map(|&v| v.saturating_sub(1) as usize)
                     .unwrap_or(0);
-                let col = params.iter().nth(1)
-                    .and_then(|p| p.get(0))
+                let col = params
+                    .iter()
+                    .nth(1)
+                    .and_then(|p| p.first())
                     .map(|&v| v.saturating_sub(1) as usize)
                     .unwrap_or(0);
-                
+
                 self.cursor.row = row.min(self.grid.height - 1);
                 self.cursor.col = col.min(self.grid.width - 1);
             }
             'J' => {
                 // ED - Erase Display
-                let mode = params.iter().nth(0)
-                    .and_then(|p| p.get(0))
+                let mode = params
+                    .iter()
+                    .nth(0)
+                    .and_then(|p| p.first())
                     .copied()
                     .unwrap_or(0);
-                
+
                 match mode {
                     0 => {
                         // Clear from cursor to end of screen
                         for row in self.cursor.row..self.grid.height {
-                            let start_col = if row == self.cursor.row { self.cursor.col } else { 0 };
+                            let start_col = if row == self.cursor.row {
+                                self.cursor.col
+                            } else {
+                                0
+                            };
                             for col in start_col..self.grid.width {
                                 if let Some(cell) = self.grid.get_cell_mut(row, col) {
                                     *cell = Cell::default();
@@ -353,7 +363,11 @@ impl Perform for Emulator {
                     1 => {
                         // Clear from beginning to cursor
                         for row in 0..=self.cursor.row {
-                            let end_col = if row == self.cursor.row { self.cursor.col } else { self.grid.width - 1 };
+                            let end_col = if row == self.cursor.row {
+                                self.cursor.col
+                            } else {
+                                self.grid.width - 1
+                            };
                             for col in 0..=end_col {
                                 if let Some(cell) = self.grid.get_cell_mut(row, col) {
                                     *cell = Cell::default();
@@ -370,11 +384,13 @@ impl Perform for Emulator {
             }
             'K' => {
                 // EL - Erase Line
-                let mode = params.iter().nth(0)
-                    .and_then(|p| p.get(0))
+                let mode = params
+                    .iter()
+                    .nth(0)
+                    .and_then(|p| p.first())
                     .copied()
                     .unwrap_or(0);
-                
+
                 match mode {
                     0 => {
                         // Clear from cursor to end of line
@@ -405,32 +421,40 @@ impl Perform for Emulator {
             }
             'A' => {
                 // CUU - Cursor Up
-                let n = params.iter().nth(0)
-                    .and_then(|p| p.get(0))
+                let n = params
+                    .iter()
+                    .nth(0)
+                    .and_then(|p| p.first())
                     .copied()
                     .unwrap_or(1) as usize;
                 self.cursor.row = self.cursor.row.saturating_sub(n);
             }
             'B' => {
                 // CUD - Cursor Down
-                let n = params.iter().nth(0)
-                    .and_then(|p| p.get(0))
+                let n = params
+                    .iter()
+                    .nth(0)
+                    .and_then(|p| p.first())
                     .copied()
                     .unwrap_or(1) as usize;
                 self.cursor.row = (self.cursor.row + n).min(self.grid.height - 1);
             }
             'C' => {
                 // CUF - Cursor Forward
-                let n = params.iter().nth(0)
-                    .and_then(|p| p.get(0))
+                let n = params
+                    .iter()
+                    .nth(0)
+                    .and_then(|p| p.first())
                     .copied()
                     .unwrap_or(1) as usize;
                 self.cursor.col = (self.cursor.col + n).min(self.grid.width - 1);
             }
             'D' => {
                 // CUB - Cursor Back
-                let n = params.iter().nth(0)
-                    .and_then(|p| p.get(0))
+                let n = params
+                    .iter()
+                    .nth(0)
+                    .and_then(|p| p.first())
                     .copied()
                     .unwrap_or(1) as usize;
                 self.cursor.col = self.cursor.col.saturating_sub(n);
@@ -454,7 +478,7 @@ impl Perform for Emulator {
             }
         }
     }
-    
+
     fn esc_dispatch(&mut self, _intermediates: &[u8], _ignore: bool, _byte: u8) {
         // ESC sequences - not critical for basic implementation
     }
@@ -464,29 +488,29 @@ fn ansi_color_to_rgb(color: u16, bright: bool) -> RGB8 {
     let colors = if bright {
         // Bright colors
         [
-            RGB8::new(127, 127, 127),  // Black (bright = gray)
-            RGB8::new(255, 0, 0),      // Red
-            RGB8::new(0, 255, 0),      // Green
-            RGB8::new(255, 255, 0),    // Yellow
-            RGB8::new(92, 92, 255),    // Blue
-            RGB8::new(255, 0, 255),    // Magenta
-            RGB8::new(0, 255, 255),    // Cyan
-            RGB8::new(255, 255, 255),  // White
+            RGB8::new(127, 127, 127), // Black (bright = gray)
+            RGB8::new(255, 0, 0),     // Red
+            RGB8::new(0, 255, 0),     // Green
+            RGB8::new(255, 255, 0),   // Yellow
+            RGB8::new(92, 92, 255),   // Blue
+            RGB8::new(255, 0, 255),   // Magenta
+            RGB8::new(0, 255, 255),   // Cyan
+            RGB8::new(255, 255, 255), // White
         ]
     } else {
         // Normal colors
         [
-            RGB8::new(0, 0, 0),        // Black
-            RGB8::new(205, 0, 0),      // Red
-            RGB8::new(0, 205, 0),      // Green
-            RGB8::new(205, 205, 0),    // Yellow
-            RGB8::new(0, 0, 238),      // Blue
-            RGB8::new(205, 0, 205),    // Magenta
-            RGB8::new(0, 205, 205),    // Cyan
-            RGB8::new(229, 229, 229),  // White
+            RGB8::new(0, 0, 0),       // Black
+            RGB8::new(205, 0, 0),     // Red
+            RGB8::new(0, 205, 0),     // Green
+            RGB8::new(205, 205, 0),   // Yellow
+            RGB8::new(0, 0, 238),     // Blue
+            RGB8::new(205, 0, 205),   // Magenta
+            RGB8::new(0, 205, 205),   // Cyan
+            RGB8::new(229, 229, 229), // White
         ]
     };
-    
+
     colors[color as usize % 8]
 }
 
@@ -525,10 +549,14 @@ pub struct StateSnapshot {
     pub grid: Grid,
 }
 
-pub fn process_events(events: &[crate::asciicast::Event], width: usize, height: usize) -> Vec<StateSnapshot> {
+pub fn process_events(
+    events: &[crate::asciicast::Event],
+    width: usize,
+    height: usize,
+) -> Vec<StateSnapshot> {
     let mut emulator = Emulator::new(width, height);
     let mut snapshots = Vec::new();
-    
+
     for event in events {
         if event.event_type == crate::asciicast::EventType::Output {
             emulator.process_string(&event.data);
@@ -538,6 +566,6 @@ pub fn process_events(events: &[crate::asciicast::Event], width: usize, height: 
             });
         }
     }
-    
+
     snapshots
 }
