@@ -17,7 +17,7 @@
 
 ```bash
 # 克隆仓库
-git clone https://github.com/yourusername/asg.git
+git clone https://github.com/kingsword09/asg.git
 cd asg
 
 # 构建发布版本
@@ -185,8 +185,8 @@ cargo fmt
 
 ## 许可证
 
-MIT License
+Apache-2.0 License
 
 ## 作者
 
-Your Name <your.email@example.com>
+Kingsword <kingsword09@gmail.com>

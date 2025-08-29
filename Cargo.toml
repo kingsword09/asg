@@ -1,11 +1,11 @@
 [package]
 name = "asg"
 version = "0.1.0"
-edition = "2021"
-authors = ["Your Name <your.email@example.com>"]
+edition = "2024"
+authors = ["Kingsword <kingsword09@gmail.com>"]
 description = "Asciinema SVG Generator - Convert .cast files to animated SVG"
-license = "MIT"
-repository = "https://github.com/yourusername/asg"
+license = "Apache-2.0"
+repository = "https://github.com/kingsword09/asg"
 keywords = ["asciinema", "svg", "terminal", "animation", "converter"]
 categories = ["command-line-utilities", "multimedia::encoding"]
 
