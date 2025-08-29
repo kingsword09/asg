@@ -4,6 +4,7 @@ use clap::Parser;
 use clap::ValueEnum; // for Theme::value_variants()
 use std::io::Write;
 use std::path::Path;
+use std::str::FromStr;
 // use std::time::Duration; // unused
 
 #[derive(Clone, Copy, Default)]
@@ -23,8 +24,7 @@ impl clap::builder::TypedValueParser for ThemeParser {
         if s.contains(',') {
             Ok(asg::Theme::Custom(s.to_string()))
         } else {
-            clap::value_parser!(asg::Theme)
-                .parse_ref(cmd, arg, value)
+            clap::value_parser!(asg::Theme).parse_ref(cmd, arg, value)
         }
     }
 
@@ -35,7 +35,7 @@ impl clap::builder::TypedValueParser for ThemeParser {
             asg::Theme::value_variants()
                 .iter()
                 .filter_map(|v| v.to_possible_value())
-                .chain(std::iter::once(clap::builder::PossibleValue::new("custom")))
+                .chain(std::iter::once(clap::builder::PossibleValue::new("custom"))),
         ))
     }
 }
@@ -63,7 +63,10 @@ struct Cli {
     fps: u8,
 
     /// Specify font family to use
-    #[clap(long, default_value = "JetBrains Mono,Monaco,Consolas,Liberation Mono,Menlo,monospace")]
+    #[clap(
+        long,
+        default_value = "JetBrains Mono,Monaco,Consolas,Liberation Mono,Menlo,monospace"
+    )]
     font_family: String,
 
     /// Set font size (in pixels)
@@ -93,35 +96,35 @@ struct Cli {
     /// Set line height
     #[clap(long, default_value = "1.4")]
     line_height: f32,
-    
+
     /// Timestamp of frame to render in seconds (for static image)
     #[clap(long)]
     at: Option<f64>,
-    
+
     /// Lower range of timeline to render in seconds
     #[clap(long)]
     from: Option<f64>,
-    
+
     /// Upper range of timeline to render in seconds
     #[clap(long)]
     to: Option<f64>,
-    
+
     /// Disable cursor rendering
     #[clap(long)]
     no_cursor: bool,
-    
+
     /// Render with window decorations
     #[clap(long)]
     window: bool,
-    
+
     /// Distance between text and image bounds
     #[clap(long, default_value = "10")]
     padding: u16,
-    
+
     /// Distance between text and image bounds on x axis
     #[clap(long)]
     padding_x: Option<u16>,
-    
+
     /// Distance between text and image bounds on y axis
     #[clap(long)]
     padding_y: Option<u16>,
@@ -145,8 +148,7 @@ fn main() -> Result<()> {
         2 => "debug",
         _ => "trace",
     };
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(log_level))
-        .init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(log_level)).init();
 
     // Build config
     let config = Config {
@@ -175,7 +177,10 @@ fn main() -> Result<()> {
     let reader = asg::input::get_reader(&cli.input)?;
     let cast = asg::asciicast::Asciicast::parse(reader)?;
     // Destructure to avoid moving issues and to reuse header later
-    let asg::asciicast::Asciicast { header, events: all_events } = cast;
+    let asg::asciicast::Asciicast {
+        header,
+        events: all_events,
+    } = cast;
 
     // Get terminal dimensions
     let cols = config.cols.unwrap_or(header.width as u16);
@@ -190,13 +195,19 @@ fn main() -> Result<()> {
     let trailing_default = 1.0 / fps; // show final state for at least one frame worth of time
 
     // Filter events by time range if specified
-    let mut events: Vec<_> = all_events.into_iter()
+    let mut events: Vec<_> = all_events
+        .into_iter()
         .filter(|e| {
-            if let Some(from) = config.from {
-                if e.time < from { return false; }
+            if let Some(from) = config.from
+                && e.time < from
+            {
+                return false;
             }
-            if let Some(to) = config.to {
-                if e.time > to { return false; }
+
+            if let Some(to) = config.to
+                && e.time > to
+            {
+                return false;
             }
             true
         })
@@ -212,9 +223,7 @@ fn main() -> Result<()> {
 
     // Strip system/OSC messages by default (window title, cwd, session footer, etc.)
     events.retain(|e| match e.event_type {
-        asg::asciicast::EventType::Output => {
-            !should_strip_system_output(&e.data, is_zsh)
-        }
+        asg::asciicast::EventType::Output => !should_strip_system_output(&e.data, is_zsh),
         _ => true,
     });
 
@@ -222,10 +231,10 @@ fn main() -> Result<()> {
     if let Some(at_time) = config.at {
         // Process events up to the specified time
         for event in &events {
-            if event.time <= at_time {
-                if let asg::asciicast::EventType::Output = event.event_type {
-                    emulator.process(event.data.as_bytes());
-                }
+            if event.time <= at_time
+                && let asg::asciicast::EventType::Output = event.event_type
+            {
+                emulator.process(event.data.as_bytes());
             }
         }
         frames.push(emulator.get_frame());
@@ -302,7 +311,7 @@ fn main() -> Result<()> {
         .with_cursor_visible(!config.no_cursor)
         .with_window(config.window)
         .with_padding(config.effective_padding_x(), config.effective_padding_y());
-    
+
     let svg = renderer.render(&frames, &durations)?;
 
     // Write output
@@ -310,11 +319,11 @@ fn main() -> Result<()> {
     if let Some(parent) = output_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    
+
     let mut file = std::fs::File::create(output_path)?;
     let svg_str = svg.to_string();
     file.write_all(svg_str.as_bytes())?;
-    
+
     println!("✨ SVG animation saved to: {}", cli.output);
     if let Some(at_time) = config.at {
         println!("🖼️  Static frame at {:.2}s", at_time);
@@ -323,7 +332,7 @@ fn main() -> Result<()> {
         println!("📊 Total frames: {}", frames.len());
         println!("⏱️  Duration: {:.2}s", total);
     }
-    
+
     Ok(())
 }
 
@@ -334,7 +343,10 @@ fn theme_from_header(h: &asg::asciicast::Theme) -> anyhow::Result<asg::theme::Th
     parts.push(h.fg.trim().to_string());
     let palette: Vec<&str> = h.palette.split(':').collect();
     if palette.len() != 16 {
-        anyhow::bail!("header.theme.palette must have 16 colors, got {}", palette.len());
+        anyhow::bail!(
+            "header.theme.palette must have 16 colors, got {}",
+            palette.len()
+        );
     }
     for p in palette {
         parts.push(p.trim().to_string());
@@ -349,7 +361,8 @@ fn strip_ansi(s: &str) -> String {
     let mut out = String::new();
     while i < bytes.len() {
         let b = bytes[i];
-        if b == 0x1b { // ESC
+        if b == 0x1b {
+            // ESC
             if i + 1 < bytes.len() {
                 let b1 = bytes[i + 1];
                 match b1 {
@@ -358,7 +371,10 @@ fn strip_ansi(s: &str) -> String {
                         i += 2;
                         while i < bytes.len() {
                             let bb = bytes[i];
-                            if (0x40..=0x7e).contains(&bb) { i += 1; break; }
+                            if (0x40..=0x7e).contains(&bb) {
+                                i += 1;
+                                break;
+                            }
                             i += 1;
                         }
                         continue;
@@ -367,8 +383,14 @@ fn strip_ansi(s: &str) -> String {
                         // OSC: ESC ] ... BEL or ST (ESC \)
                         i += 2;
                         while i < bytes.len() {
-                            if bytes[i] == 0x07 { i += 1; break; } // BEL
-                            if bytes[i] == 0x1b && i + 1 < bytes.len() && bytes[i+1] == b'\\' { i += 2; break; }
+                            if bytes[i] == 0x07 {
+                                i += 1;
+                                break;
+                            } // BEL
+                            if bytes[i] == 0x1b && i + 1 < bytes.len() && bytes[i + 1] == b'\\' {
+                                i += 2;
+                                break;
+                            }
                             i += 1;
                         }
                         continue;
@@ -385,7 +407,10 @@ fn strip_ansi(s: &str) -> String {
             }
         }
         // Drop control chars except printable ASCII and UTF-8 continuation handled by from_utf8_lossy later
-        if b == b'\r' || b == b'\n' || b == b'\t' || b < 0x20 { i += 1; continue; }
+        if b == b'\r' || b == b'\n' || b == b'\t' || b < 0x20 {
+            i += 1;
+            continue;
+        }
         // push utf8 chunk conservatively (single byte or start of multi-byte)
         // For simplicity, collect the remainder and let from_utf8_lossy handle
         out.push(bytes[i] as char);
@@ -407,7 +432,9 @@ fn should_strip_system_output(s: &str, is_zsh: bool) -> bool {
     // Strip lone zsh default prompt lines that render just '%'
     if is_zsh {
         let visible = strip_ansi(s);
-        if visible.trim() == "%" { return true; }
+        if visible.trim() == "%" {
+            return true;
+        }
     }
     false
 }

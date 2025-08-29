@@ -9,25 +9,25 @@ pub struct Header {
     pub version: u32,
     pub width: u32,
     pub height: u32,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timestamp: Option<f64>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration: Option<f64>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub idle_time_limit: Option<f64>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub command: Option<String>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub env: Option<HashMap<String, String>>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub theme: Option<Theme>,
 }
@@ -68,15 +68,11 @@ impl Event {
         if arr.len() < 3 {
             anyhow::bail!("Invalid event format: expected at least 3 elements");
         }
-        
-        let time = arr[0]
-            .as_f64()
-            .context("Event time must be a number")?;
-        
-        let event_type_str = arr[1]
-            .as_str()
-            .context("Event type must be a string")?;
-        
+
+        let time = arr[0].as_f64().context("Event time must be a number")?;
+
+        let event_type_str = arr[1].as_str().context("Event type must be a string")?;
+
         let event_type = match event_type_str {
             "o" => EventType::Output,
             "i" => EventType::Input,
@@ -86,12 +82,12 @@ impl Event {
                 EventType::Output
             }
         };
-        
+
         let data = arr[2]
             .as_str()
             .context("Event data must be a string")?
             .to_string();
-        
+
         Ok(Event {
             time,
             event_type,
@@ -112,28 +108,30 @@ impl<R: BufRead> Parser<R> {
             header: None,
         }
     }
-    
+
     pub fn parse_header(&mut self) -> Result<Header> {
         let mut line = String::new();
         self.reader
             .read_line(&mut line)
             .context("Failed to read header line")?;
-        
+
         if line.is_empty() {
             anyhow::bail!("Empty cast file");
         }
-        
-        let header: Header = serde_json::from_str(&line)
-            .context("Failed to parse header JSON")?;
-        
+
+        let header: Header = serde_json::from_str(&line).context("Failed to parse header JSON")?;
+
         if header.version != 2 {
-            anyhow::bail!("Unsupported asciicast version: {}. Only version 2 is supported.", header.version);
+            anyhow::bail!(
+                "Unsupported asciicast version: {}. Only version 2 is supported.",
+                header.version
+            );
         }
-        
+
         self.header = Some(header.clone());
         Ok(header)
     }
-    
+
     pub fn events(&mut self) -> EventIterator<'_, R> {
         EventIterator {
             reader: &mut self.reader,
@@ -147,7 +145,7 @@ pub struct EventIterator<'a, R: BufRead> {
 
 impl<'a, R: BufRead> Iterator for EventIterator<'a, R> {
     type Item = Result<Event>;
-    
+
     fn next(&mut self) -> Option<Self::Item> {
         let mut line = String::new();
         match self.reader.read_line(&mut line) {
@@ -157,7 +155,7 @@ impl<'a, R: BufRead> Iterator for EventIterator<'a, R> {
                 if line.is_empty() {
                     return self.next(); // Skip empty lines
                 }
-                
+
                 match serde_json::from_str::<Vec<Value>>(line) {
                     Ok(arr) => Some(Event::from_json_array(&arr)),
                     Err(e) => Some(Err(anyhow::anyhow!("Failed to parse event JSON: {}", e))),
@@ -171,7 +169,7 @@ impl<'a, R: BufRead> Iterator for EventIterator<'a, R> {
 pub fn parse<R: BufRead>(reader: R) -> Result<(Header, Vec<Event>)> {
     let mut parser = Parser::new(reader);
     let header = parser.parse_header()?;
-    
+
     let mut events = Vec::new();
     for event_result in parser.events() {
         match event_result {
@@ -182,7 +180,7 @@ pub fn parse<R: BufRead>(reader: R) -> Result<(Header, Vec<Event>)> {
             }
         }
     }
-    
+
     Ok((header, events))
 }
 

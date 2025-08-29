@@ -26,7 +26,8 @@ pub fn get_reader(input: &str) -> Result<Box<dyn BufRead>> {
         if !response.status().is_success() {
             anyhow::bail!("Server returned status: {}", response.status());
         }
-        let content = response.bytes()
+        let content = response
+            .bytes()
             .with_context(|| "Failed to read response body")?;
         return Ok(Box::new(BufReader::new(std::io::Cursor::new(content))));
     }
@@ -75,17 +76,18 @@ impl InputReader for RemoteInput {
     fn read(&self) -> Result<Box<dyn BufRead>> {
         let url = format!("{}/a/{}.cast", self.server, self.id);
         log::info!("Fetching cast file from: {}", url);
-        
+
         let response = reqwest::blocking::get(&url)
             .with_context(|| format!("Failed to fetch from URL: {}", url))?;
-        
+
         if !response.status().is_success() {
             anyhow::bail!("Server returned status: {}", response.status());
         }
-        
-        let content = response.bytes()
+
+        let content = response
+            .bytes()
             .with_context(|| "Failed to read response body")?;
-        
+
         Ok(Box::new(BufReader::new(std::io::Cursor::new(content))))
     }
 }
@@ -98,8 +100,6 @@ pub fn get_input_reader(source: &InputSource) -> Result<Box<dyn InputReader>> {
             }
             Ok(Box::new(FileInput::new(path.clone())))
         }
-        InputSource::RemoteId(id) => {
-            Ok(Box::new(RemoteInput::new(id.clone(), None)))
-        }
+        InputSource::RemoteId(id) => Ok(Box::new(RemoteInput::new(id.clone(), None))),
     }
 }

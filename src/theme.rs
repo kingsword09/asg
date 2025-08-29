@@ -1,4 +1,6 @@
-use anyhow::{anyhow, Result};
+use std::str::FromStr;
+
+use anyhow::{Result, anyhow};
 use rgb::RGB8;
 
 #[derive(Debug, Clone)]
@@ -8,28 +10,32 @@ pub struct Theme {
     pub palette: [RGB8; 16],
 }
 
-impl Theme {
-    pub fn from_str(s: &str) -> Result<Self> {
+impl FromStr for Theme {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self> {
         let colors: Vec<&str> = s.split(',').collect();
-        
+
         if colors.len() != 18 {
             return Err(anyhow!(
                 "Theme must have exactly 18 colors (bg, fg, and 16 palette colors), got {}",
                 colors.len()
             ));
         }
-        
+
         let bg = parse_hex_color(colors[0])?;
         let fg = parse_hex_color(colors[1])?;
-        
+
         let mut palette = [RGB8::default(); 16];
         for (i, color_str) in colors[2..].iter().enumerate() {
             palette[i] = parse_hex_color(color_str)?;
         }
-        
+
         Ok(Theme { bg, fg, palette })
     }
-    
+}
+
+impl Theme {
     pub fn get_color(&self, index: u8) -> RGB8 {
         if index < 16 {
             self.palette[index as usize]
@@ -42,15 +48,15 @@ impl Theme {
 fn parse_hex_color(s: &str) -> Result<RGB8> {
     let s = s.trim();
     let s = s.trim_start_matches('#');
-    
+
     if s.len() != 6 {
         return Err(anyhow!("Invalid hex color: {}", s));
     }
-    
+
     let r = u8::from_str_radix(&s[0..2], 16)?;
     let g = u8::from_str_radix(&s[2..4], 16)?;
     let b = u8::from_str_radix(&s[4..6], 16)?;
-    
+
     Ok(RGB8::new(r, g, b))
 }
 
