@@ -1,56 +1,58 @@
 # ASG - Asciinema SVG Generator
 
-将 Asciinema 录制文件（`.cast`）转换为动画 SVG 文件的 Rust 命令行工具。
+A Rust CLI that converts Asciinema cast files (`.cast`) into animated SVG.
 
-## 特性
+Chinese documentation: [README_ZH.md](README_ZH.md)
 
-- 🎬 支持 Asciicast v2 格式
-- 🌐 支持本地文件和远程录制 ID
-- 🎨 完整的 ANSI 颜色和样式支持
-- ⚡ 高性能的终端模拟器（基于 vte）
-- 📦 生成独立的动画 SVG 文件
-- 🔧 可自定义字体和样式
+## Features
 
-## 安装
+- 🎬 Supports Asciicast v2
+- 🌐 Works with local files, URLs, and remote recording IDs
+- 🎨 Accurate per-cell ANSI colors and text styles (bold, italic, underline) with background rectangles
+- ⚡ Fast terminal emulation powered by `vte`
+- 📦 Produces a self-contained animated SVG file
+- 🔧 Customizable font family, font size, line height, theme, and padding
 
-### 从源码构建
+## Installation
+
+### Build from source
 
 ```bash
-# 克隆仓库
+# Clone the repository
 git clone https://github.com/kingsword09/asg.git
 cd asg
 
-# 构建发布版本
+# Build release
 cargo build --release
 
-# 安装到系统（可选）
+# Install to system (optional)
 cargo install --path .
 ```
 
-### 依赖项
+### Requirements
 
-- Rust 1.70.0 或更高版本
-- Cargo 包管理器
+- Rust stable toolchain
+- Cargo package manager
 
-## 使用方法
+## Usage
 
-### 基本用法
+### Basic usage
 
 ```bash
-# 转换本地 .cast 文件
+# Convert a local .cast file
 asg demo.cast demo.svg
 
-# 指定输出文件名（第二个位置参数）
+# Specify output file name (second positional arg)
 asg demo.cast output.svg
 
-# 从 asciinema.org 下载并转换
+# Download from asciinema.org by recording ID and convert
 asg 113643 output.svg
 
-# 使用自定义字体
-asg demo.cast output.svg --font-family "Monaco, monospace"
+# Use a custom font stack
+asg demo.cast output.svg --font-family "JetBrains Mono,Monaco,Consolas,Liberation Mono,Menlo,monospace"
 ```
 
-### 命令行参数
+### CLI options
 
 ```
 USAGE:
@@ -86,107 +88,109 @@ OPTIONS:
     -h, --help                       Print help information
 ```
 
-## 架构设计
+## Architecture
 
-ASG 采用模块化架构设计，主要包含以下模块：
+ASG uses a modular architecture consisting of these primary modules:
 
-### 核心模块
+### Core modules
 
-- **input.rs** - 输入处理层，统一处理本地文件和远程 URL
-- **asciicast.rs** - Asciicast v2 格式解析器
-- **terminal.rs** - 基于 vte 的终端模拟器
-- **renderer.rs** - SVG 生成和 CSS 动画渲染
-- **main.rs** - CLI 入口和工作流协调
+- `src/input.rs` — Input layer for local files, URLs, and remote IDs
+- `src/asciicast.rs` — Asciicast v2 parser
+- `src/terminal.rs` — VTE-based terminal emulator (parses ANSI/SGR, produces frames)
+- `src/renderer.rs` — SVG generation and CSS animation
+- `src/main.rs` — CLI entrypoint and orchestration
 
-### 数据流
+### Data flow
 
 ```
-输入（文件/ID）
+Input (file/URL/ID)
     ↓
-输入处理器
+Input reader
     ↓
-.cast 数据流
+.cast NDJSON stream
     ↓
-Asciicast 解析器
+Asciicast parser
     ↓
-终端模拟器（VTE）
+Terminal emulator (VTE)
     ↓
-状态快照序列
+Frame sequence (cells with fg/bg and styles)
     ↓
-SVG 渲染器
+SVG renderer
     ↓
-动画 SVG 文件
+Animated SVG file
 ```
 
-## 技术特点
+## Technical highlights
 
-### 终端模拟
+### Terminal emulation
 
-- 使用 `vte` crate 实现高性能、标准兼容的 ANSI 转义序列解析
-- 支持完整的 SGR（Select Graphic Rendition）参数
-- 实现光标控制、屏幕清除等终端操作
+- High-performance and spec-compliant ANSI sequence parsing via `vte`
+- Full SGR support: foreground/background (standard/bright/256-color/truecolor), bold, italic, underline
+- Cursor movement, screen clearing, and other control sequences
 
-### SVG 生成
+### SVG generation
 
-- 使用 CSS Keyframes 实现流畅的动画效果
-- 优化文件体积：相同样式的文本共享 CSS 类
-- 支持字体自定义和主题颜色
+- Smooth animation using CSS keyframes with per-frame opacity transitions
+- Row-level grouping ensures background rectangles render beneath text
+- Backgrounds are merged into contiguous runs of `<rect>` to reduce element count
+- Text is grouped by (foreground-color + style) and applies `font-weight`/`font-style`/`text-decoration`
+- Configurable font family, font size, line height, and padding
 
-### 性能优化
+### Performance
 
-- 流式处理：逐行解析 NDJSON 格式，无需加载整个文件
-- 智能状态跟踪：只记录变化的单元格
-- 高效的样式合并：减少 DOM 元素数量
+- Streaming NDJSON parsing without loading the whole file
+- Tracks only state changes to minimize memory and output
+- Merges background/text runs to keep SVG DOM small
 
-## 示例
+## Examples
 
-### 本地文件转换
+### Local file
 
 ```bash
-# 录制终端会话
+# Record a terminal session
 asciinema rec demo.cast
 
-# 转换为 SVG
+# Convert to SVG
 asg demo.cast demo.svg
 
-# 在浏览器中查看
+# Open in a browser
 open demo.svg
 ```
 
-### 远程录制转换
+### Remote recording
 
 ```bash
-# 从 asciinema.org 获取录制
+# Fetch from asciinema.org and convert
 asg 113643 terminal-demo.svg
 ```
 
-## 贡献
+## Contributing
 
-欢迎提交 Issue 和 Pull Request！
+Issues and pull requests are welcome!
 
-### 开发
+### Development
 
 ```bash
-# 运行测试
+# Run tests
 cargo test
 
-# 检查代码
+# Lint code
 cargo clippy
 
-# 格式化代码
+# Format code
 cargo fmt
 ```
 
-## 相关项目
+## Related projects
 
-- [asciinema](https://github.com/asciinema/asciinema) - 终端录制工具
-- [svg-term-cli](https://github.com/marionebl/svg-term-cli) - JavaScript 实现的类似工具
-- [agg](https://github.com/asciinema/agg) - Asciinema GIF 生成器
+- [asciinema](https://github.com/asciinema/asciinema) — Terminal recorder
+- [svg-term-cli](https://github.com/marionebl/svg-term-cli) — JavaScript implementation
+- [agg](https://github.com/asciinema/agg) — Asciinema GIF generator
 
-## 许可证
+## License
 
 Apache-2.0 License
 
-## 作者
+## Author
 
 Kingsword <kingsword09@gmail.com>
