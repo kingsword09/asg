@@ -1,7 +1,7 @@
 [package]
 categories = ["command-line-utilities", "multimedia::encoding"]
 name = "asg"
-version = "0.1.0"
+version = "0.1.1"
 # documentation = "https://docs.rs/asg"
 description = "Asciinema SVG Generator - Convert .cast files to animated SVG"
 keywords = ["asciinema", "svg", "terminal", "animation", "converter"]
@@ -29,10 +29,10 @@ serde_json = "1.0"
 reqwest = { version = "0.12", features = ["blocking", "json"] }
 
 # VTE (Virtual Terminal Emulator) parsing
-vte = "0.13"
+vte = "0.15"
 
 # SVG generation
-svg = "0.17"
+svg = "0.18"
 
 # Error handling
 anyhow = "1.0"

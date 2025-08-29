@@ -102,9 +102,7 @@ impl Emulator {
 
     pub fn process(&mut self, input: &[u8]) {
         let mut parser = std::mem::take(&mut self.parser);
-        for byte in input {
-            parser.advance(self, *byte);
-        }
+        parser.advance(self, input);
         self.parser = parser;
     }
 
