@@ -141,15 +141,15 @@ text {{
     white-space: pre; 
     font-family: monospace; 
     font-size: {}px;
-    fill: #{:02x}{:02x}{:02x};
 }}
 .frame {{ opacity: 0; }}
 "#,
-            self.font_size, self.theme.fg.r, self.theme.fg.g, self.theme.fg.b
+            self.font_size
         ));
         
         // Calculate dimensions for positioning
         let line_height_px = self.font_size as f32 * self.line_height;
+        let char_width = self.font_size as f32 * 0.6;
         
         if frames.is_empty() {
             return (css, frame_groups);
@@ -162,20 +162,165 @@ text {{
             let mut frame_group = Group::new().set("class", "frame");
             
             for row in 0..frame.height {
-                let mut line_content = String::new();
-                for col in 0..frame.width {
+                // Find last non-space character to avoid rendering trailing whitespace
+                let mut last_col_opt: Option<usize> = None;
+                for col in (0..frame.width).rev() {
                     if let Some(cell) = frame.get_cell(row, col) {
-                        line_content.push(cell.ch);
-                    } else {
-                        line_content.push(' ');
+                        if cell.ch != ' ' {
+                            last_col_opt = Some(col);
+                            break;
+                        }
                     }
                 }
-                let trimmed = line_content.trim_end();
-                if !trimmed.is_empty() {
-                    let text_group = Group::new()
-                        .set("transform", format!("translate(0, {})", row as f32 * line_height_px + self.font_size as f32))
-                        .add(TextElement::new(trimmed));
-                    frame_group = frame_group.add(text_group);
+
+                if let Some(last_col) = last_col_opt {
+                    // Create a row group positioned at the top of the row box
+                    let mut row_group = Group::new()
+                        .set("transform", format!(
+                            "translate(0, {})",
+                            row as f32 * line_height_px
+                        ));
+
+                    // 1) Background rectangles grouped by bg color runs
+                    let mut bg_group = Group::new();
+                    let theme_bg = (self.theme.bg.r, self.theme.bg.g, self.theme.bg.b);
+                    let mut bg_run_start: usize = 0;
+                    let mut bg_run_color: Option<(u8, u8, u8)> = None;
+
+                    // (helper removed) we'll flush bg runs inline to avoid borrow issues
+
+                    for col in 0..=last_col {
+                        if let Some(cell) = frame.get_cell(row, col) {
+                            let bg_tuple = (cell.bg.r, cell.bg.g, cell.bg.b);
+                            // Skip painting backgrounds that match the global background or pure black default
+                            let should_paint = bg_tuple != theme_bg && bg_tuple != (0, 0, 0);
+                            match (bg_run_color, should_paint) {
+                                (None, true) => {
+                                    bg_run_color = Some(bg_tuple);
+                                    bg_run_start = col;
+                                }
+                                (Some(current), true) if current == bg_tuple => {
+                                    // continue run
+                                }
+                                (Some(current), _) => {
+                                    // flush and stop run
+                                    if col > bg_run_start {
+                                        let width = (col - bg_run_start) as f32 * char_width;
+                                        let x = bg_run_start as f32 * char_width;
+                                        let (r, g, b) = current;
+                                        let fill = format!("#{:02x}{:02x}{:02x}", r, g, b);
+                                        let rect = Rectangle::new()
+                                            .set("x", x)
+                                            .set("y", 0.0)
+                                            .set("width", width)
+                                            .set("height", line_height_px)
+                                            .set("fill", fill);
+                                        bg_group = bg_group.add(rect);
+                                    }
+                                    bg_run_color = None;
+                                }
+                                (None, false) => {
+                                    // no-op
+                                }
+                            }
+                        }
+                    }
+                    // Flush final bg run
+                    if let Some(color) = bg_run_color {
+                        let end = last_col + 1;
+                        if end > bg_run_start {
+                            let width = (end - bg_run_start) as f32 * char_width;
+                            let x = bg_run_start as f32 * char_width;
+                            let (r, g, b) = color;
+                            let fill = format!("#{:02x}{:02x}{:02x}", r, g, b);
+                            let rect = Rectangle::new()
+                                .set("x", x)
+                                .set("y", 0.0)
+                                .set("width", width)
+                                .set("height", line_height_px)
+                                .set("fill", fill);
+                            bg_group = bg_group.add(rect);
+                        }
+                    }
+
+                    row_group = row_group.add(bg_group);
+
+                    // 2) Foreground text grouped by (fg color + styles)
+                    let mut text_group = Group::new()
+                        .set("transform", format!("translate(0, {})", self.font_size as f32));
+
+                    #[derive(Clone, Copy, PartialEq, Eq)]
+                    struct StyleKey {
+                        fg: (u8, u8, u8),
+                        bold: bool,
+                        italic: bool,
+                        underline: bool,
+                    }
+
+                    let mut run_text = String::new();
+                    let mut run_start_col: usize = 0;
+                    let mut run_key: Option<StyleKey> = None;
+
+                    // (helper removed) we'll flush text runs inline
+
+                    for col in 0..=last_col {
+                        if let Some(cell) = frame.get_cell(row, col) {
+                            let key = StyleKey {
+                                fg: (cell.fg.r, cell.fg.g, cell.fg.b),
+                                bold: cell.bold,
+                                italic: cell.italic,
+                                underline: cell.underline,
+                            };
+                            match run_key {
+                                None => {
+                                    run_key = Some(key);
+                                    run_start_col = col;
+                                    run_text.push(cell.ch);
+                                }
+                                Some(current) if current == key => {
+                                    run_text.push(cell.ch);
+                                }
+                                Some(current) => {
+                                    // flush previous
+                                    if !run_text.is_empty() {
+                                        let x = run_start_col as f32 * char_width;
+                                        let (r, g, b) = current.fg;
+                                        let fill = format!("#{:02x}{:02x}{:02x}", r, g, b);
+                                        let mut el = TextElement::new(run_text.clone())
+                                            .set("x", x)
+                                            .set("fill", fill);
+                                        if current.bold { el = el.set("font-weight", "bold"); }
+                                        if current.italic { el = el.set("font-style", "italic"); }
+                                        if current.underline { el = el.set("text-decoration", "underline"); }
+                                        text_group = text_group.add(el);
+                                    }
+                                    // start new
+                                    run_key = Some(key);
+                                    run_start_col = col;
+                                    run_text.clear();
+                                    run_text.push(cell.ch);
+                                }
+                            }
+                        }
+                    }
+
+                    if let Some(current) = run_key {
+                        if !run_text.is_empty() {
+                            let x = run_start_col as f32 * char_width;
+                            let (r, g, b) = current.fg;
+                            let fill = format!("#{:02x}{:02x}{:02x}", r, g, b);
+                            let mut el = TextElement::new(run_text)
+                                .set("x", x)
+                                .set("fill", fill);
+                            if current.bold { el = el.set("font-weight", "bold"); }
+                            if current.italic { el = el.set("font-style", "italic"); }
+                            if current.underline { el = el.set("text-decoration", "underline"); }
+                            text_group = text_group.add(el);
+                        }
+                    }
+
+                    row_group = row_group.add(text_group);
+                    frame_group = frame_group.add(row_group);
                 }
             }
             
