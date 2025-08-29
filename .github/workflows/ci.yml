@@ -25,3 +25,25 @@ jobs:
         with:
           tool: typos-cli,taplo-cli
       - run: cargo +nightly x lint
+
+  publish:
+    name: Publish to crates.io
+    runs-on: ubuntu-latest
+    needs: check
+    environment: release # Optional: for enhanced security
+    permissions:
+      id-token: write # Required for OIDC token exchange
+    steps:
+      - uses: actions/checkout@v5
+      - uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+      - run: |
+          set -euo pipefail
+          echo "Commit message: $COMMIT_MSG"
+          if [[ "$COMMIT_MSG" =~ ^chore:\ release\ v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            cargo publish -p asg
+          else
+            echo "Skip publish (not a release commit)"
+          fi
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
