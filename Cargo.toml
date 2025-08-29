@@ -1,41 +1,16 @@
-[package]
-name = "asg"
+[workspace]
+members = ["asg", "xtask"]
+resolver = "3"
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
 authors = ["Kingsword <kingsword09@gmail.com>"]
-description = "Asciinema SVG Generator - Convert .cast files to animated SVG"
+homepage = "https://github.com/kingsword09/asg"
 license = "Apache-2.0"
+readme = "README.md"
 repository = "https://github.com/kingsword09/asg"
-keywords = ["asciinema", "svg", "terminal", "animation", "converter"]
-categories = ["command-line-utilities", "multimedia::encoding"]
+rust-version = "1.80.0"
 
-[dependencies]
-# CLI argument parsing
-clap = { version = "4.5", features = ["derive"] }
-
-# Serialization/Deserialization
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-
-# HTTP client for remote cast files
-reqwest = { version = "0.12", features = ["blocking", "json"] }
-
-# VTE (Virtual Terminal Emulator) parsing
-vte = "0.13"
-
-# SVG generation
-svg = "0.17"
-
-# Error handling
-anyhow = "1.0"
-thiserror = "1.0"
-
-# Logging
-log = "0.4"
-env_logger = "0.11"
-
-# Color handling
-rgb = "0.8"
-
-[dev-dependencies]
-tempfile = "3.10"
+[workspace.dependencies]
+clap = { version = "4.5.46", features = ["derive"] }

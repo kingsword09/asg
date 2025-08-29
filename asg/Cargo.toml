@@ -1,0 +1,49 @@
+[package]
+name = "asg"
+version = "0.1.0"
+categories = ["command-line-utilities", "multimedia::encoding"]
+# documentation = "https://docs.rs/asg"
+description = "Asciinema SVG Generator - Convert .cast files to animated SVG"
+keywords = ["asciinema", "svg", "terminal", "animation", "converter"]
+
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+readme.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[dependencies]
+# CLI argument parsing
+clap = { workspace = true, features = ["derive"] }
+
+# Serialization/Deserialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# HTTP client for remote cast files
+reqwest = { version = "0.12", features = ["blocking", "json"] }
+
+# VTE (Virtual Terminal Emulator) parsing
+vte = "0.13"
+
+# SVG generation
+svg = "0.17"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Logging
+log = "0.4"
+env_logger = "0.11"
+
+# Color handling
+rgb = "0.8"
+
+[dev-dependencies]
+tempfile = "3.10"
