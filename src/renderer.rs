@@ -1,8 +1,7 @@
 use crate::terminal::Frame;
 use crate::theme::Theme;
 use anyhow::Result;
-use std::collections::HashMap;
-use svg::node::element::{Circle, Definitions, Group, Rectangle, Style};
+use svg::node::element::{Animate, Circle, Definitions, Group, Rectangle, Style, Text as TextElement};
 use svg::Document;
 
 pub struct SvgRenderer {
@@ -134,9 +133,7 @@ impl SvgRenderer {
     
     fn generate_styles_and_segments(&self, frames: &[Frame], frame_duration: f64) -> (String, Vec<Group>) {
         let mut css = String::new();
-        let mut text_elements = Vec::new();
-        let style_map: HashMap<String, String> = HashMap::new();
-        let style_counter = 0;
+        let mut frame_groups = Vec::new();
         
         // Basic styles
         css.push_str(&format!(
@@ -147,49 +144,63 @@ text {{
     font-size: {}px;
     fill: #{:02x}{:02x}{:02x};
 }}
+.frame {{ opacity: 0; }}
 "#,
             self.font_size, self.theme.fg.r, self.theme.fg.g, self.theme.fg.b
         ));
         
-        // Unused variables for now - we'll use simple rendering
-        let _ = style_map;
-        let _ = style_counter;
-        let _ = frame_duration;
-        
         // Calculate dimensions for positioning
-        let _char_width = self.font_size as f32 * 0.6;
         let line_height_px = self.font_size as f32 * self.line_height;
         
-        // Simple static rendering for now
         if frames.is_empty() {
-            return (css, text_elements);
+            return (css, frame_groups);
         }
         
-        let frame = &frames[frames.len() / 2]; // Use middle frame for static rendering
-        
-        for row in 0..frame.height {
-            let mut line_content = String::new();
-            for col in 0..frame.width {
-                if let Some(cell) = frame.get_cell(row, col) {
-                    line_content.push(cell.ch);
-                } else {
-                    line_content.push(' ');
+        // Chain animations using previous frame's end; first frame also restarts after last
+        let last_anim_id = format!("f{}", frames.len() - 1);
+        for (i, frame) in frames.iter().enumerate() {
+            // Each frame is a group with class 'frame' so default opacity is 0
+            let mut frame_group = Group::new().set("class", "frame");
+            
+            for row in 0..frame.height {
+                let mut line_content = String::new();
+                for col in 0..frame.width {
+                    if let Some(cell) = frame.get_cell(row, col) {
+                        line_content.push(cell.ch);
+                    } else {
+                        line_content.push(' ');
+                    }
+                }
+                let trimmed = line_content.trim_end();
+                if !trimmed.is_empty() {
+                    let text_group = Group::new()
+                        .set("transform", format!("translate(0, {})", row as f32 * line_height_px + self.font_size as f32))
+                        .add(TextElement::new(trimmed));
+                    frame_group = frame_group.add(text_group);
                 }
             }
             
-            // Trim trailing whitespace
-            let trimmed = line_content.trim_end();
-            if !trimmed.is_empty() {
-                // Create text element group with positioned text node
-                let text_group = Group::new()
-                    .set("transform", format!("translate(0, {})", row as f32 * line_height_px + self.font_size as f32))
-                    .add(svg::node::Text::new(trimmed));
-                text_elements.push(text_group);
-            }
-            
+            // Animate opacity for this frame's time slice; chain to previous frame's end
+            let begin_attr = if i == 0 {
+                if self.loop_enable { format!("0s;{}.end", last_anim_id) } else { "0s".to_string() }
+            } else {
+                format!("f{}.end", i - 1)
+            };
+            let anim_id = format!("f{}", i);
+            let anim = Animate::new()
+                .set("id", anim_id.clone())
+                .set("attributeName", "opacity")
+                .set("begin", begin_attr)
+                .set("dur", format!("{:.6}s", frame_duration))
+                // Keep frame visible for the whole duration, then revert to base (0)
+                .set("values", "1;1")
+                .set("keyTimes", "0;1")
+                .set("calcMode", "discrete");
+            frame_group = frame_group.add(anim);
+            frame_groups.push(frame_group);
         }
         
-        (css, text_elements)
+        (css, frame_groups)
     }
     
     fn create_window_decorations(&self, width: f32, _height: f32) -> Group {
