@@ -38,35 +38,52 @@ cargo install --path .
 
 ```bash
 # 转换本地 .cast 文件
-asg demo.cast
+asg demo.cast demo.svg
 
-# 指定输出文件名
-asg demo.cast -o output.svg
+# 指定输出文件名（第二个位置参数）
+asg demo.cast output.svg
 
 # 从 asciinema.org 下载并转换
-asg 113643
+asg 113643 output.svg
 
 # 使用自定义字体
-asg demo.cast --font "Monaco, monospace"
+asg demo.cast output.svg --font-family "Monaco, monospace"
 ```
 
 ### 命令行参数
 
 ```
 USAGE:
-    asg [OPTIONS] <INPUT>
+    asg <INPUT> <OUTPUT> [OPTIONS]
 
 ARGS:
-    <INPUT>    Path to .cast file or remote ID (e.g., '113643')
+    <INPUT>     Path to .cast file, URL, or remote ID (e.g., '113643')
+    <OUTPUT>    Output SVG file path
 
 OPTIONS:
-    -o, --output <OUTPUT>     Output SVG file path
-    -f, --font <FONT>         Font family for the terminal text 
-                             [default: "Consolas, Monaco, 'Courier New', monospace"]
-    -s, --server <SERVER>     Asciinema server URL (for remote recordings) 
-                             [default: https://asciinema.org]
-    -v, --verbose            Verbose output
-    -h, --help               Print help information
+        --theme <THEME>              Select color theme (or provide comma-separated hex colors)
+        --speed <SPEED>              Adjust playback speed [default: 1.0]
+        --fps <FPS>                  Frames per second [default: 30]
+        --font-family <FONT_FAMILY>  Font family for the terminal text
+                                     [default: JetBrains Mono,Monaco,Consolas,Liberation Mono,Menlo,monospace]
+        --font-size <PX>             Font size in pixels [default: 14]
+    -i, --idle-time-limit <SECS>     Idle time limit in seconds
+        --cols <COLS>                Override terminal width (columns)
+        --rows <ROWS>                Override terminal height (rows)
+        --font-dir <DIR>             Path to a directory containing font files
+        --no-loop                    Disable animation loop
+        --line-height <FLOAT>        Line height [default: 1.4]
+        --at <SECS>                  Timestamp of frame to render (static image)
+        --from <SECS>                Lower range of timeline to render
+        --to <SECS>                  Upper range of timeline to render
+        --no-cursor                  Disable cursor rendering
+        --window                     Render with window decorations
+        --padding <PX>               Distance between text and image bounds [default: 10]
+        --padding-x <PX>             Override padding on x axis
+        --padding-y <PX>             Override padding on y axis
+        --timeline <MODE>            Timeline mode: original|fixed [default: original]
+    -v, --verbose                    Verbose output (-v, -vv, -vvv)
+    -h, --help                       Print help information
 ```
 
 ## 架构设计
@@ -130,7 +147,7 @@ SVG 渲染器
 asciinema rec demo.cast
 
 # 转换为 SVG
-asg demo.cast
+asg demo.cast demo.svg
 
 # 在浏览器中查看
 open demo.svg
@@ -140,10 +157,7 @@ open demo.svg
 
 ```bash
 # 从 asciinema.org 获取录制
-asg 113643 -o terminal-demo.svg
-
-# 使用自定义服务器
-asg 12345 --server https://my-asciinema-server.com
+asg 113643 terminal-demo.svg
 ```
 
 ## 贡献

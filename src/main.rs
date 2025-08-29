@@ -50,8 +50,9 @@ struct Cli {
     output: String,
 
     /// Select color theme (or provide comma-separated hex colors)
-    #[clap(short, long, value_parser = ThemeParser, default_value = "asciinema")]
-    theme: Theme,
+    /// If omitted, we will use header.theme from the cast file when available.
+    #[clap(short, long, value_parser = ThemeParser)]
+    theme: Option<Theme>,
 
     /// Adjust playback speed
     #[clap(short, long, default_value = "1.0")]
@@ -125,6 +126,10 @@ struct Cli {
     #[clap(long)]
     padding_y: Option<u16>,
 
+    /// Timeline mode: original (variable per-frame) or fixed (resampled to FPS)
+    #[clap(long, value_enum, default_value_t = asg::Timeline::Original)]
+    timeline: asg::Timeline,
+
     /// Verbose mode (-v, -vv, -vvv, etc.)
     #[clap(short, long, action = clap::ArgAction::Count)]
     verbose: u8,
@@ -163,25 +168,29 @@ fn main() -> Result<()> {
         padding: cli.padding,
         padding_x: cli.padding_x,
         padding_y: cli.padding_y,
+        timeline: cli.timeline,
     };
 
     // Read the input
     let reader = asg::input::get_reader(&cli.input)?;
     let cast = asg::asciicast::Asciicast::parse(reader)?;
+    // Destructure to avoid moving issues and to reuse header later
+    let asg::asciicast::Asciicast { header, events: all_events } = cast;
 
     // Get terminal dimensions
-    let cols = config.cols.unwrap_or(cast.header.width as u16);
-    let rows = config.rows.unwrap_or(cast.header.height as u16);
+    let cols = config.cols.unwrap_or(header.width as u16);
+    let rows = config.rows.unwrap_or(header.height as u16);
 
     // Process events through terminal emulator
     let mut emulator = asg::terminal::Emulator::new(cols as usize, rows as usize);
-    let mut frames = Vec::new();
-    let mut last_time = 0.0;
+    let mut frames: Vec<asg::terminal::Frame> = Vec::new();
+    let mut durations: Vec<f64> = Vec::new();
+    let mut last_time = config.from.unwrap_or(0.0);
     let fps = config.fps as f64;
-    let frame_duration = 1.0 / fps;
+    let trailing_default = 1.0 / fps; // show final state for at least one frame worth of time
 
     // Filter events by time range if specified
-    let events: Vec<_> = cast.events.into_iter()
+    let mut events: Vec<_> = all_events.into_iter()
         .filter(|e| {
             if let Some(from) = config.from {
                 if e.time < from { return false; }
@@ -192,6 +201,22 @@ fn main() -> Result<()> {
             true
         })
         .collect();
+
+    // Detect shell from header.env to scope certain filters (e.g., zsh temporary '%')
+    let is_zsh = header
+        .env
+        .as_ref()
+        .and_then(|m| m.get("SHELL"))
+        .map(|s| s.contains("zsh"))
+        .unwrap_or(false);
+
+    // Strip system/OSC messages by default (window title, cwd, session footer, etc.)
+    events.retain(|e| match e.event_type {
+        asg::asciicast::EventType::Output => {
+            !should_strip_system_output(&e.data, is_zsh)
+        }
+        _ => true,
+    });
 
     // Handle --at option for single frame
     if let Some(at_time) = config.at {
@@ -204,42 +229,69 @@ fn main() -> Result<()> {
             }
         }
         frames.push(emulator.get_frame());
+        durations.push(trailing_default);
     } else {
-        // Normal animation processing
-        for event in events {
-            let mut duration = event.time - last_time;
-            
-            // Apply speed factor
-            duration /= config.speed;
-            
-            // Apply idle time limit if specified
-            if let Some(limit) = config.idle_time_limit {
-                duration = duration.min(limit);
-            }
-            
-            // Generate frames for this duration
-            let frame_count = (duration * fps).ceil() as usize;
-            if frame_count > 0 {
-                // Add frames showing the current state
-                for _ in 0..frame_count {
+        match config.timeline {
+            asg::Timeline::Original => {
+                // Variable-duration animation processing (original timing)
+                for event in events {
+                    let mut duration = event.time - last_time;
+                    // Apply speed factor
+                    duration /= config.speed;
+                    // Apply idle time limit if specified
+                    if let Some(limit) = config.idle_time_limit {
+                        duration = duration.min(limit);
+                    }
+                    // Show current state for the duration until this event
                     frames.push(emulator.get_frame());
+                    durations.push(duration.max(0.0));
+                    // Process the event to update state
+                    if let asg::asciicast::EventType::Output = event.event_type {
+                        emulator.process(event.data.as_bytes());
+                    }
+                    last_time = event.time;
                 }
+                // Add final frame showing the last state for a short trailing duration
+                frames.push(emulator.get_frame());
+                durations.push(trailing_default);
             }
-            
-            // Process the event
-            if let asg::asciicast::EventType::Output = event.event_type {
-                emulator.process(event.data.as_bytes());
+            asg::Timeline::Fixed => {
+                // Resample to fixed FPS
+                let fps = config.fps as f64;
+                let fd = 1.0 / fps;
+                for event in events {
+                    let mut duration = event.time - last_time;
+                    duration /= config.speed;
+                    if let Some(limit) = config.idle_time_limit {
+                        duration = duration.min(limit);
+                    }
+                    let frame_count = (duration * fps).ceil() as usize;
+                    if frame_count > 0 {
+                        for _ in 0..frame_count {
+                            frames.push(emulator.get_frame());
+                            durations.push(fd);
+                        }
+                    }
+                    if let asg::asciicast::EventType::Output = event.event_type {
+                        emulator.process(event.data.as_bytes());
+                    }
+                    last_time = event.time;
+                }
+                // Final frame
+                frames.push(emulator.get_frame());
+                durations.push(fd);
             }
-            
-            last_time = event.time;
         }
-        
-        // Add final frame
-        frames.push(emulator.get_frame());
     }
 
-    // Convert theme (clone to avoid moving from config)
-    let theme: asg::theme::Theme = config.theme.clone().try_into()?;
+    // Determine effective theme: CLI > header.theme > default
+    let theme: asg::theme::Theme = if let Some(cli_theme) = config.theme.clone() {
+        cli_theme.try_into()?
+    } else if let Some(header_theme) = header.theme.clone() {
+        theme_from_header(&header_theme)?
+    } else {
+        asg::theme::Theme::default()
+    };
 
     // Render to SVG
     let renderer = asg::renderer::SvgRenderer::new(cols as usize, rows as usize)
@@ -251,7 +303,7 @@ fn main() -> Result<()> {
         .with_window(config.window)
         .with_padding(config.effective_padding_x(), config.effective_padding_y());
     
-    let svg = renderer.render(&frames, frame_duration)?;
+    let svg = renderer.render(&frames, &durations)?;
 
     // Write output
     let output_path = Path::new(&cli.output);
@@ -264,12 +316,98 @@ fn main() -> Result<()> {
     file.write_all(svg_str.as_bytes())?;
     
     println!("✨ SVG animation saved to: {}", cli.output);
-    if config.at.is_some() {
-        println!("🖼️  Static frame at {:.2}s", config.at.unwrap());
+    if let Some(at_time) = config.at {
+        println!("🖼️  Static frame at {:.2}s", at_time);
     } else {
+        let total: f64 = durations.iter().copied().sum();
         println!("📊 Total frames: {}", frames.len());
-        println!("⏱️  Duration: {:.2}s", frames.len() as f64 * frame_duration);
+        println!("⏱️  Duration: {:.2}s", total);
     }
     
     Ok(())
+}
+
+fn theme_from_header(h: &asg::asciicast::Theme) -> anyhow::Result<asg::theme::Theme> {
+    // header.theme.palette is ':'-separated 16 colors
+    let mut parts = Vec::new();
+    parts.push(h.bg.trim().to_string());
+    parts.push(h.fg.trim().to_string());
+    let palette: Vec<&str> = h.palette.split(':').collect();
+    if palette.len() != 16 {
+        anyhow::bail!("header.theme.palette must have 16 colors, got {}", palette.len());
+    }
+    for p in palette {
+        parts.push(p.trim().to_string());
+    }
+    let s = parts.join(",");
+    asg::theme::Theme::from_str(&s)
+}
+
+fn strip_ansi(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut i = 0usize;
+    let mut out = String::new();
+    while i < bytes.len() {
+        let b = bytes[i];
+        if b == 0x1b { // ESC
+            if i + 1 < bytes.len() {
+                let b1 = bytes[i + 1];
+                match b1 {
+                    b'[' => {
+                        // CSI: ESC [ ... final (0x40..=0x7E)
+                        i += 2;
+                        while i < bytes.len() {
+                            let bb = bytes[i];
+                            if (0x40..=0x7e).contains(&bb) { i += 1; break; }
+                            i += 1;
+                        }
+                        continue;
+                    }
+                    b']' => {
+                        // OSC: ESC ] ... BEL or ST (ESC \)
+                        i += 2;
+                        while i < bytes.len() {
+                            if bytes[i] == 0x07 { i += 1; break; } // BEL
+                            if bytes[i] == 0x1b && i + 1 < bytes.len() && bytes[i+1] == b'\\' { i += 2; break; }
+                            i += 1;
+                        }
+                        continue;
+                    }
+                    _ => {
+                        // Other ESC sequences: skip ESC + next byte
+                        i += 2;
+                        continue;
+                    }
+                }
+            } else {
+                i += 1;
+                continue;
+            }
+        }
+        // Drop control chars except printable ASCII and UTF-8 continuation handled by from_utf8_lossy later
+        if b == b'\r' || b == b'\n' || b == b'\t' || b < 0x20 { i += 1; continue; }
+        // push utf8 chunk conservatively (single byte or start of multi-byte)
+        // For simplicity, collect the remainder and let from_utf8_lossy handle
+        out.push(bytes[i] as char);
+        i += 1;
+    }
+    out
+}
+
+fn should_strip_system_output(s: &str, is_zsh: bool) -> bool {
+    // Strip OSC sequences (Operating System Command): ESC ] ... (terminated by BEL or ST)
+    if s.starts_with("\x1b]") {
+        return true;
+    }
+    // Strip common session footer lines
+    let t = s.trim();
+    if t == "Saving session..." || t == "completed." {
+        return true;
+    }
+    // Strip lone zsh default prompt lines that render just '%'
+    if is_zsh {
+        let visible = strip_ansi(s);
+        if visible.trim() == "%" { return true; }
+    }
+    false
 }

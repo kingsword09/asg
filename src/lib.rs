@@ -47,8 +47,16 @@ impl TryFrom<Theme> for theme::Theme {
     }
 }
 
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum Timeline {
+    /// Use original timing from cast (variable per-frame durations)
+    Original,
+    /// Resample to a fixed FPS (uniform per-frame durations)
+    Fixed,
+}
+
 pub struct Config {
-    pub theme: Theme,
+    pub theme: Option<Theme>,
     pub speed: f64,
     pub fps: u8,
     pub font_size: u8,
@@ -66,6 +74,7 @@ pub struct Config {
     pub padding: u16,
     pub padding_x: Option<u16>,
     pub padding_y: Option<u16>,
+    pub timeline: Timeline,
 }
 
 impl Config {

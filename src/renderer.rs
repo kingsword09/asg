@@ -69,7 +69,7 @@ impl SvgRenderer {
         self
     }
     
-    pub fn render(&self, frames: &[Frame], _total_duration: f64) -> Result<Document> {
+    pub fn render(&self, frames: &[Frame], durations: &[f64]) -> Result<Document> {
         let char_width = self.font_size as f32 * 0.6;
         let line_height_px = self.font_size as f32 * self.line_height;
         
@@ -95,8 +95,7 @@ impl SvgRenderer {
         // Title will be added via metadata if needed
         
         // Generate styles and text for all frames
-        let frame_duration = 0.1; // Default frame duration
-        let (styles, text_elements) = self.generate_styles_and_segments(frames, frame_duration);
+        let (styles, text_elements) = self.generate_styles_and_segments(frames, durations);
         
         // Create definitions with styles
         let defs = Definitions::new()
@@ -131,7 +130,7 @@ impl SvgRenderer {
         Ok(doc)
     }
     
-    fn generate_styles_and_segments(&self, frames: &[Frame], frame_duration: f64) -> (String, Vec<Group>) {
+    fn generate_styles_and_segments(&self, frames: &[Frame], durations: &[f64]) -> (String, Vec<Group>) {
         let mut css = String::new();
         let mut frame_groups = Vec::new();
         
@@ -187,11 +186,12 @@ text {{
                 format!("f{}.end", i - 1)
             };
             let anim_id = format!("f{}", i);
+            let dur = durations.get(i).copied().unwrap_or(0.0).max(0.000_001);
             let anim = Animate::new()
                 .set("id", anim_id.clone())
                 .set("attributeName", "opacity")
                 .set("begin", begin_attr)
-                .set("dur", format!("{:.6}s", frame_duration))
+                .set("dur", format!("{:.6}s", dur))
                 // Keep frame visible for the whole duration, then revert to base (0)
                 .set("values", "1;1")
                 .set("keyTimes", "0;1")

@@ -140,49 +140,121 @@ impl Emulator {
     }
     
     fn parse_sgr_params(&mut self, params: &Params) {
-        for param in params {
-            for value in param {
-                match *value {
-                    0 => {
-                        // Reset all attributes
-                        self.fg_color = RGB8::new(204, 204, 204);
-                        self.bg_color = RGB8::new(0, 0, 0);
-                        self.bold = false;
-                        self.italic = false;
-                        self.underline = false;
-                    }
-                    1 => self.bold = true,
-                    3 => self.italic = true,
-                    4 => self.underline = true,
-                    22 => self.bold = false,
-                    23 => self.italic = false,
-                    24 => self.underline = false,
-                    30..=37 => {
-                        self.fg_color = ansi_color_to_rgb(value - 30, self.bold);
-                    }
-                    40..=47 => {
-                        self.bg_color = ansi_color_to_rgb(value - 40, false);
-                    }
-                    38 => {
-                        // Extended foreground color (not fully implemented)
-                        // This would need more complex parsing for 256-color and RGB
-                    }
-                    48 => {
-                        // Extended background color (not fully implemented)
-                    }
-                    90..=97 => {
-                        // Bright foreground colors
-                        self.fg_color = ansi_color_to_rgb(value - 90, true);
-                    }
-                    100..=107 => {
-                        // Bright background colors
-                        self.bg_color = ansi_color_to_rgb(value - 100, true);
-                    }
-                    _ => {
-                        log::debug!("Unhandled SGR parameter: {}", value);
+        // Flatten params for easier lookahead parsing
+        let mut vals: Vec<u16> = Vec::new();
+        for p in params {
+            for v in p {
+                vals.push(*v);
+            }
+        }
+
+        if vals.is_empty() {
+            // SGR with no params is equivalent to reset
+            self.fg_color = RGB8::new(204, 204, 204);
+            self.bg_color = RGB8::new(0, 0, 0);
+            self.bold = false;
+            self.italic = false;
+            self.underline = false;
+            return;
+        }
+
+        let mut i = 0usize;
+        while i < vals.len() {
+            let v = vals[i];
+            match v {
+                0 => {
+                    self.fg_color = RGB8::new(204, 204, 204);
+                    self.bg_color = RGB8::new(0, 0, 0);
+                    self.bold = false;
+                    self.italic = false;
+                    self.underline = false;
+                }
+                1 => self.bold = true,
+                3 => self.italic = true,
+                4 => self.underline = true,
+                22 => self.bold = false,
+                23 => self.italic = false,
+                24 => self.underline = false,
+                30..=37 => {
+                    self.fg_color = ansi_color_to_rgb(v - 30, self.bold);
+                }
+                39 => {
+                    // default foreground
+                    self.fg_color = RGB8::new(204, 204, 204);
+                }
+                40..=47 => {
+                    self.bg_color = ansi_color_to_rgb(v - 40, false);
+                }
+                49 => {
+                    // default background
+                    self.bg_color = RGB8::new(0, 0, 0);
+                }
+                90..=97 => {
+                    // Bright foreground colors
+                    self.fg_color = ansi_color_to_rgb(v - 90, true);
+                }
+                100..=107 => {
+                    // Bright background colors
+                    self.bg_color = ansi_color_to_rgb(v - 100, true);
+                }
+                38 => {
+                    // Extended foreground color
+                    if i + 1 < vals.len() {
+                        match vals[i + 1] {
+                            5 => {
+                                // 256-color: 38;5;N
+                                if i + 2 < vals.len() {
+                                    let idx = vals[i + 2];
+                                    self.fg_color = color_from_256(idx);
+                                    i += 2;
+                                }
+                            }
+                            2 => {
+                                // truecolor: 38;2;R;G;B
+                                if i + 4 < vals.len() {
+                                    let r = vals[i + 2] as u8;
+                                    let g = vals[i + 3] as u8;
+                                    let b = vals[i + 4] as u8;
+                                    self.fg_color = RGB8::new(r, g, b);
+                                    i += 4;
+                                }
+                            }
+                            _ => {}
+                        }
                     }
                 }
+                48 => {
+                    // Extended background color
+                    if i + 1 < vals.len() {
+                        match vals[i + 1] {
+                            5 => {
+                                // 256-color: 48;5;N
+                                if i + 2 < vals.len() {
+                                    let idx = vals[i + 2];
+                                    self.bg_color = color_from_256(idx);
+                                    i += 2;
+                                }
+                            }
+                            2 => {
+                                // truecolor: 48;2;R;G;B
+                                if i + 4 < vals.len() {
+                                    let r = vals[i + 2] as u8;
+                                    let g = vals[i + 3] as u8;
+                                    let b = vals[i + 4] as u8;
+                                    self.bg_color = RGB8::new(r, g, b);
+                                    i += 4;
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                _ => {
+                    log::debug!("Unhandled SGR parameter: {}", v);
+                }
             }
+
+            i += 1;
         }
     }
 }
@@ -416,6 +488,35 @@ fn ansi_color_to_rgb(color: u16, bright: bool) -> RGB8 {
     };
     
     colors[color as usize % 8]
+}
+
+fn color_from_256(index: u16) -> RGB8 {
+    match index {
+        0..=15 => {
+            let bright = index >= 8;
+            let base = if bright { index - 8 } else { index };
+            ansi_color_to_rgb(base, bright)
+        }
+        16..=231 => {
+            // 6x6x6 color cube
+            let c = index - 16;
+            let r = c / 36;
+            let g = (c % 36) / 6;
+            let b = c % 6;
+            let level = |n: u16| -> u8 {
+                const LEVELS: [u8; 6] = [0, 95, 135, 175, 215, 255];
+                LEVELS[n as usize]
+            };
+            RGB8::new(level(r), level(g), level(b))
+        }
+        232..=255 => {
+            // grayscale ramp
+            let v = 8 + 10 * (index - 232);
+            let v = v as u8;
+            RGB8::new(v, v, v)
+        }
+        _ => RGB8::new(204, 204, 204),
+    }
 }
 
 #[derive(Debug, Clone)]
