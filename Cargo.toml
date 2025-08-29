@@ -10,7 +10,7 @@ homepage = "https://github.com/kingsword09/asg"
 license = "Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/kingsword09/asg"
-rust-version = "1.80.0"
+rust-version = "1.85.0"
 
 [workspace.dependencies]
 clap = { version = "4.5.46", features = ["derive"] }
