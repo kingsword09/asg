@@ -1,7 +1,8 @@
-use anyhow::{Context, Result};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
+
+use anyhow::{Context, Result};
 
 pub enum InputSource {
     File(String),

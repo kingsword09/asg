@@ -1,11 +1,12 @@
-use anyhow::Result;
-use asg::{self, Config, Theme};
-use clap::Parser;
-use clap::ValueEnum; // for Theme::value_variants()
 use std::io::Write;
 use std::path::Path;
 use std::str::FromStr;
-// use std::time::Duration; // unused
+
+use anyhow::Result;
+use asg::{self, Config, Theme};
+use clap::Parser;
+use clap::ValueEnum;
+use rgb::RGB8; // for Theme::value_variants()
 
 #[derive(Clone, Copy, Default)]
 struct ThemeParser;
@@ -336,20 +337,17 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn theme_from_header(h: &asg::asciicast::Theme) -> anyhow::Result<asg::theme::Theme> {
-    // header.theme.palette is ':'-separated 16 colors
-    let mut parts = Vec::new();
-    parts.push(h.bg.trim().to_string());
-    parts.push(h.fg.trim().to_string());
-    let palette: Vec<&str> = h.palette.split(':').collect();
-    if palette.len() != 16 {
-        anyhow::bail!(
-            "header.theme.palette must have 16 colors, got {}",
-            palette.len()
-        );
+fn theme_from_header(h: &asg::theme::Theme) -> anyhow::Result<asg::theme::Theme> {
+    // Build a comma-separated list of 18 hex colors (bg, fg, then 16 palette colors)
+    fn to_hex(c: RGB8) -> String {
+        format!("{:02x}{:02x}{:02x}", c.r, c.g, c.b)
     }
-    for p in palette {
-        parts.push(p.trim().to_string());
+
+    let mut parts: Vec<String> = Vec::with_capacity(18);
+    parts.push(to_hex(RGB8::from(h.bg)));
+    parts.push(to_hex(RGB8::from(h.fg)));
+    for rgb in &h.palette {
+        parts.push(to_hex(RGB8::from(*rgb)));
     }
     let s = parts.join(",");
     asg::theme::Theme::from_str(&s)
