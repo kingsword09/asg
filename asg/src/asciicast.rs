@@ -1,8 +1,11 @@
+use std::collections::HashMap;
+use std::io::BufRead;
+
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashMap;
-use std::io::BufRead;
+
+use crate::theme::Theme;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Header {
@@ -30,23 +33,6 @@ pub struct Header {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub theme: Option<Theme>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Theme {
-    pub fg: String,
-    pub bg: String,
-    pub palette: String,
-}
-
-impl Default for Theme {
-    fn default() -> Self {
-        Self {
-            fg: "#cccccc".to_string(),
-            bg: "#000000".to_string(),
-            palette: "#000000:#cd0000:#00cd00:#cdcd00:#0000ee:#cd00cd:#00cdcd:#e5e5e5:#7f7f7f:#ff0000:#00ff00:#ffff00:#5c5cff:#ff00ff:#00ffff:#ffffff".to_string(),
-        }
-    }
 }
 
 #[derive(Debug, Clone)]

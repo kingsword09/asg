@@ -1,10 +1,11 @@
-use crate::terminal::Frame;
-use crate::theme::Theme;
 use anyhow::Result;
 use svg::Document;
 use svg::node::element::{
     Animate, Circle, Definitions, Group, Rectangle, Style, Text as TextElement,
 };
+
+use crate::terminal::Frame;
+use crate::theme::Theme;
 
 pub struct SvgRenderer {
     cols: usize,
@@ -150,9 +151,9 @@ impl SvgRenderer {
         // Basic styles
         css.push_str(&format!(
             r#"
-text {{ 
-    white-space: pre; 
-    font-family: monospace; 
+text {{
+    white-space: pre;
+    font-family: monospace;
     font-size: {}px;
 }}
 .frame {{ opacity: 0; }}

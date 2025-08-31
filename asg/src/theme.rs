@@ -2,12 +2,96 @@ use std::str::FromStr;
 
 use anyhow::{Result, anyhow};
 use rgb::RGB8;
+use serde::{Deserialize, Serialize, de::Visitor};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
+pub struct Rgb {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+}
+
+impl Rgb {
+    pub fn to_u32(&self) -> u32 {
+        u32::from_be_bytes([self.r, self.g, self.b, 0])
+    }
+
+    pub fn from_u32(rgb: u32) -> Self {
+        let [r, g, b, _] = rgb.to_be_bytes();
+        Self { r, g, b }
+    }
+}
+
+impl Serialize for Rgb {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_u32(self.to_u32())
+    }
+}
+
+impl<'de> Deserialize<'de> for Rgb {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct V;
+
+        impl<'de> Visitor<'de> for V {
+            type Value = Rgb;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("an integer represeting an RGB color")
+            }
+
+            fn visit_u32<E>(self, v: u32) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(Rgb::from_u32(v))
+            }
+
+            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                self.visit_u32(
+                    v.try_into()
+                        .map_err(|_| E::custom("rgb value doesn't fit u32"))?,
+                )
+            }
+        }
+
+        deserializer.deserialize_u32(V)
+    }
+}
+
+impl From<RGB8> for Rgb {
+    fn from(color: RGB8) -> Self {
+        Rgb {
+            r: color.r,
+            g: color.g,
+            b: color.b,
+        }
+    }
+}
+
+impl From<Rgb> for RGB8 {
+    fn from(color: Rgb) -> Self {
+        RGB8 {
+            r: color.r,
+            g: color.g,
+            b: color.b,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Theme {
-    pub bg: RGB8,
-    pub fg: RGB8,
-    pub palette: [RGB8; 16],
+    pub bg: Rgb,
+    pub fg: Rgb,
+    pub palette: [Rgb; 16],
 }
 
 impl FromStr for Theme {
@@ -31,16 +115,20 @@ impl FromStr for Theme {
             palette[i] = parse_hex_color(color_str)?;
         }
 
-        Ok(Theme { bg, fg, palette })
+        Ok(Theme {
+            bg: bg.into(),
+            fg: fg.into(),
+            palette: palette.map(|c| c.into()),
+        })
     }
 }
 
 impl Theme {
     pub fn get_color(&self, index: u8) -> RGB8 {
         if index < 16 {
-            self.palette[index as usize]
+            self.palette[index as usize].into()
         } else {
-            self.fg
+            self.fg.into()
         }
     }
 }
