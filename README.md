@@ -17,12 +17,12 @@ Chinese documentation: [README_ZH.md](README_ZH.md)
 
 ### Install via npm (recommended)
 
-ASG is distributed as an npm package named `asg-cli`, which installs the `asg` command.
+ASG is distributed as an npm package named `@kingsword/asg`, which installs the `asg` command.
 
 - Global install:
 
 ```bash
-npm i -g asg-cli
+npm i -g @kingsword/asg
 # then
 asg --help
 ```
@@ -30,11 +30,11 @@ asg --help
 - One-off usage (without global install):
 
 ```bash
-npx -p asg-cli asg --help
+npx -p @kingsword/asg asg --help
 ```
 
 Note:
-- The package name is `asg-cli`, but the installed command is `asg` (from the `bin` field).
+- The package name is `@kingsword/asg`, but the installed command is `asg` (from the `bin` field).
 - There is currently no prebuilt dynamic/static Rust binary published to crates.io for `cargo install asg`. If you want a native binary, build from source (below).
 
 ### Build from source

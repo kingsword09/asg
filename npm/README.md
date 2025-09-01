@@ -1,4 +1,4 @@
-# asg-cli (Asciinema SVG Generator)
+# @kingsword/asg (Asciinema SVG Generator)
 
 Convert asciinema .cast recordings into animated SVGs.
 
@@ -7,14 +7,14 @@ This is the npm distribution of ASG. It provides the `asg` CLI command via Node.
 ## Installation
 
 - Global install:
-  - npm: `npm i -g asg-cli`
-  - pnpm: `pnpm add -g asg-cli`
-  - yarn: `yarn global add asg-cli`
+  - npm: `npm i -g @kingsword/asg`
+  - pnpm: `pnpm add -g @kingsword/asg`
+  - yarn: `yarn global add @kingsword/asg`
 
 - One-off usage (no global install):
-  - npx: `npx -p asg-cli asg --help`
+  - npx: `npx -p @kingsword/asg asg --help`
 
-Note: The package name is `asg-cli`, but the installed command is `asg` (from the `bin` field).
+Note: The package name is `@kingsword/asg`, but the installed command is `asg` (from the `bin` field).
 
 ## Usage
 
@@ -74,4 +74,4 @@ asg --speed 1.5 --theme dracula examples/demo.cast examples/fast.svg
 ## Notes
 
 - On Node.js, `asg` uses a WASI component under the hood. Paths should be provided as normal host paths; the CLI maps them internally as needed.
-- If another global package also provides an `asg` binary, whichever is installed last will win. You can uninstall the conflicting package or use `npx -p asg-cli asg ...`.
+- If another global package also provides an `asg` binary, whichever is installed last will win. You can uninstall the conflicting package or use `npx -p @kingsword/asg asg ...`.

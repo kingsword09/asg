@@ -17,12 +17,12 @@ English documentation: see README.md
 
 ### 通过 npm 安装（推荐）
 
-ASG 提供 npm 包 `asg-cli`，安装后命令名为 `asg`。
+ASG 提供 npm 包 `@kingsword/asg`，安装后命令名为 `asg`。
 
 - 全局安装：
 
 ```bash
-npm i -g asg-cli
+npm i -g @kingsword/asg
 # 然后
 asg --help
 ```
@@ -30,11 +30,11 @@ asg --help
 - 临时一次性使用（无需全局安装）：
 
 ```bash
-npx -p asg-cli asg --help
+npx -p @kingsword/asg asg --help
 ```
 
 说明：
-- 包名是 `asg-cli`，但安装的命令叫 `asg`（来自 package.json 的 `bin` 字段）。
+- 包名是 `@kingsword/asg`，但安装的命令叫 `asg`（来自 package.json 的 `bin` 字段）。
 - 目前未在 crates.io 发布可直接 `cargo install asg` 的预构建二进制/动态库；如需原生二进制，请参考下方“从源码构建”。
 
 ### 从源码构建
