@@ -25,8 +25,6 @@ clap = { workspace = true, features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
-# HTTP client for remote cast files
-reqwest = { version = "0.12", features = ["blocking", "json"] }
 
 # VTE (Virtual Terminal Emulator) parsing
 vte = "0.15"
@@ -44,6 +42,16 @@ log = "0.4"
 
 # Color handling
 rgb = "0.8"
+
+# HTTP client for remote cast files
+# Non-WASM uses reqwest (see target-specific dependencies below)
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+reqwest = { version = "0.12", features = ["blocking", "json"] }
+
+[target.wasm32-wasip2.dependencies]
+waki = "0.5"
+
 
 [dev-dependencies]
 tempfile = "3.10"

@@ -9,6 +9,41 @@ pub enum InputSource {
     RemoteId(String),
 }
 
+// Platform-specific HTTP fetch implementation
+
+// Non-WASM targets: use reqwest blocking client
+#[cfg(not(target_family = "wasm"))]
+fn fetch_url(url: &str) -> Result<Vec<u8>> {
+    let response = reqwest::blocking::get(url)
+        .with_context(|| format!("Failed to fetch from URL: {}", url))?;
+    if !response.status().is_success() {
+        anyhow::bail!("Server returned status: {}", response.status());
+    }
+    let bytes = response
+        .bytes()
+        .with_context(|| "Failed to read response body")?;
+    Ok(bytes.to_vec())
+}
+
+// WASI (wasm32-wasip2): use waki high-level Client
+#[cfg(target_os = "wasi")]
+fn fetch_url(url: &str) -> Result<Vec<u8>> {
+    let resp = waki::Client::new()
+        .get(url)
+        .send()
+        .with_context(|| format!("Failed to fetch from URL: {}", url))?;
+
+    let status = resp.status_code();
+    if !(200..300).contains(&status) {
+        anyhow::bail!("Server returned status: {}", status);
+    }
+
+    let body = resp
+        .body()
+        .with_context(|| "Failed to read response body")?;
+    Ok(body)
+}
+
 /// Returns a BufRead for the given input string.
 /// - If it looks like a path and exists: reads from file.
 /// - If it looks like a URL (contains "://"): fetches via HTTP.
@@ -22,14 +57,7 @@ pub fn get_reader(input: &str) -> Result<Box<dyn BufRead>> {
         // Fetch arbitrary URL
         let url = input.to_string();
         log::info!("Fetching cast file from: {}", url);
-        let response = reqwest::blocking::get(&url)
-            .with_context(|| format!("Failed to fetch from URL: {}", url))?;
-        if !response.status().is_success() {
-            anyhow::bail!("Server returned status: {}", response.status());
-        }
-        let content = response
-            .bytes()
-            .with_context(|| "Failed to read response body")?;
+        let content = fetch_url(&url)?;
         return Ok(Box::new(BufReader::new(std::io::Cursor::new(content))));
     }
 
@@ -77,18 +105,7 @@ impl InputReader for RemoteInput {
     fn read(&self) -> Result<Box<dyn BufRead>> {
         let url = format!("{}/a/{}.cast", self.server, self.id);
         log::info!("Fetching cast file from: {}", url);
-
-        let response = reqwest::blocking::get(&url)
-            .with_context(|| format!("Failed to fetch from URL: {}", url))?;
-
-        if !response.status().is_success() {
-            anyhow::bail!("Server returned status: {}", response.status());
-        }
-
-        let content = response
-            .bytes()
-            .with_context(|| "Failed to read response body")?;
-
+        let content = fetch_url(&url)?;
         Ok(Box::new(BufReader::new(std::io::Cursor::new(content))))
     }
 }
