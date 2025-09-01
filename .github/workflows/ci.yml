@@ -48,7 +48,7 @@ jobs:
           then
             VERSION=$(git log -1 --pretty=%B | sed -n 's/^chore: release \(v[0-9]\+\.[0-9]\+\.[0-9]\+\)$/\1/p')
             echo "Detected release version: $VERSION"
-            cargo publish
+            cargo publish -p asg
             echo "Published to crates.io"
             echo "version=$VERSION" >> $GITHUB_OUTPUT
           else

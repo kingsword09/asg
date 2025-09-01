@@ -1,7 +1,7 @@
 [package]
 categories = ["command-line-utilities", "multimedia::encoding"]
 name = "asg"
-version = "0.1.1"
+version = "0.1.2"
 # documentation = "https://docs.rs/asg"
 description = "Asciinema SVG Generator - Convert .cast files to animated SVG"
 keywords = ["asciinema", "svg", "terminal", "animation", "converter"]
