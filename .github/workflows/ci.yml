@@ -57,10 +57,40 @@ jobs:
           fi
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+      - name: Setup Node.js for npm publish
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+      - id: npm_release
+        name: Publish to npm (on chore(npm) commits)
+        working-directory: npm
+        run: |
+          if git log -1 --pretty=%B | grep "^chore(npm): release v[0-9]\+\.[0-9]\+\.[0-9]\+$";
+          then
+            VERSION=$(git log -1 --pretty=%B | sed -n 's/^chore(npm): release \(v[0-9]\+\.[0-9]\+\.[0-9]\+\)$/\1/p')
+            echo "Detected npm release version: $VERSION"
+            npm ci
+            npm run prebuild
+            npm run build
+            npm version "${VERSION#v}" --no-git-tag-version
+            npm publish --access public
+            echo "npm_version=$VERSION" >> $GITHUB_OUTPUT
+          else
+            echo "Not an npm release commit, skipping npm publish"
+            echo "npm_version=" >> $GITHUB_OUTPUT
+          fi
       - name: Create GitHub Release
         if: ${{ steps.release.outputs.version != '' }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.release.outputs.version }}
+          generate_release_notes: true
+          target_commitish: ${{ github.sha }}
+      - name: Create GitHub Release (npm)
+        if: ${{ steps.npm_release.outputs.npm_version != '' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: npm@${{ steps.npm_release.outputs.npm_version }}
           generate_release_notes: true
           target_commitish: ${{ github.sha }}
