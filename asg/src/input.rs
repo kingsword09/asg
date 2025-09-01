@@ -50,28 +50,17 @@ fn fetch_url(url: &str) -> Result<Vec<u8>> {
 /// - If it looks like a path and exists: reads from file.
 /// - Otherwise: treats it as an asciinema remote id and fetches from default server.
 pub fn get_reader(input: &str) -> Result<Box<dyn BufRead>> {
-    log::info!("get_reader() input arg: {}", input);
     // Check if it's a URL first
     if input.starts_with("http://") || input.starts_with("https://") {
         // Fetch arbitrary URL
         let url = input.to_string();
-        log::info!("Fetching cast file from: {}", url);
         let content = fetch_url(&url)?;
         return Ok(Box::new(BufReader::new(std::io::Cursor::new(content))));
     }
 
-    // On WASI, absolute guest paths should be opened verbatim to respect preopen mounts
-    #[cfg(target_os = "wasi")]
-    {
-        if input.starts_with('/') {
-            log::info!("WASI: opening guest-absolute path verbatim: {}", input);
-            return FileInput::new(input.to_string()).read();
-        }
-    }
-
     // Check if it's a .cast file (and not a URL)
     if input.ends_with(".cast") {
-        let file_path = resolve_cast_file_path(input)?;
+        let file_path = resolve_file_path(input)?;
         return FileInput::new(file_path).read();
     }
 
@@ -82,15 +71,6 @@ pub fn get_reader(input: &str) -> Result<Box<dyn BufRead>> {
 
     // Treat as remote id
     RemoteInput::new(input.to_string(), None).read()
-}
-
-/// Resolves a .cast file path to an absolute path, handling cross-platform compatibility.
-/// - If the path is already absolute, normalizes it and returns it.
-/// - If the path is relative, converts it to an absolute path based on current working directory.
-/// - Handles Windows, macOS, and Linux path formats.
-/// - Resolves ".." and "." components in the path.
-fn resolve_cast_file_path(input: &str) -> Result<String> {
-    resolve_file_path(input)
 }
 
 /// Resolves an output file path to an absolute path, handling cross-platform compatibility.
@@ -105,8 +85,9 @@ pub fn resolve_output_path(output: &str) -> Result<String> {
     // Create parent directories if they don't exist
     let path = Path::new(&resolved_path);
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("Failed to create parent directories for: {}", resolved_path))?;
+        std::fs::create_dir_all(parent).with_context(|| {
+            format!("Failed to create parent directories for: {}", resolved_path)
+        })?;
     }
 
     Ok(resolved_path)
@@ -117,7 +98,7 @@ pub fn resolve_output_path(output: &str) -> Result<String> {
 /// - If the path is relative, converts it to an absolute path based on current working directory.
 /// - Handles Windows, macOS, and Linux path formats.
 /// - Resolves ".." and "." components in the path.
-fn resolve_file_path(input: &str) -> Result<String> {
+pub fn resolve_file_path(input: &str) -> Result<String> {
     let path = Path::new(input);
 
     let absolute_path = if path.is_absolute() {
@@ -130,34 +111,15 @@ fn resolve_file_path(input: &str) -> Result<String> {
         current_dir.join(path)
     };
 
-    // On WASI, avoid canonicalize() because it may strip mount prefixes like "/work" or "/mN"
-    // which breaks preopen-based path resolution. Instead, only do a logical normalization.
-    #[cfg(target_os = "wasi")]
-    {
-        let normalized = normalize_path(&absolute_path);
-        let out = normalized.to_string_lossy().to_string();
-        log::info!(
-            "WASI: resolve_file_path: input='{}' abs='{}' => normalized='{}'",
-            input,
-            absolute_path.to_string_lossy(),
-            out
-        );
-        return Ok(out);
-    }
-
-    // Non-WASI: use canonicalize for robust resolution
-    #[cfg(not(target_os = "wasi"))]
-    {
-        // Try to canonicalize the path to resolve any ".." or "." components
-        // and ensure it's a proper absolute path
-        match absolute_path.canonicalize() {
-            Ok(canonical_path) => Ok(canonical_path.to_string_lossy().to_string()),
-            Err(_) => {
-                // If canonicalize fails (e.g., file doesn't exist yet),
-                // manually normalize the path by resolving ".." and "." components
-                let normalized = normalize_path(&absolute_path);
-                Ok(normalized.to_string_lossy().to_string())
-            }
+    // Try to canonicalize the path to resolve any ".." or "." components
+    // and ensure it's a proper absolute path
+    match absolute_path.canonicalize() {
+        Ok(canonical_path) => Ok(canonical_path.to_string_lossy().to_string()),
+        Err(_) => {
+            // If canonicalize fails (e.g., file doesn't exist yet),
+            // manually normalize the path by resolving ".." and "." components
+            let normalized = normalize_path(&absolute_path);
+            Ok(normalized.to_string_lossy().to_string())
         }
     }
 }
@@ -248,21 +210,13 @@ mod tests {
     fn test_resolve_cast_file_path() {
         // Test relative path
         let relative_path = "demo.cast";
-        let resolved = resolve_cast_file_path(relative_path).unwrap();
-        println!(
-            "Relative path '{}' resolved to: '{}'",
-            relative_path, resolved
-        );
+        let resolved = resolve_file_path(relative_path).unwrap();
         assert!(Path::new(&resolved).is_absolute());
         assert!(resolved.ends_with("demo.cast"));
 
         // Test relative path with subdirectory
         let relative_subdir = "examples/demo.cast";
-        let resolved_subdir = resolve_cast_file_path(relative_subdir).unwrap();
-        println!(
-            "Relative subdir path '{}' resolved to: '{}'",
-            relative_subdir, resolved_subdir
-        );
+        let resolved_subdir = resolve_file_path(relative_subdir).unwrap();
         assert!(Path::new(&resolved_subdir).is_absolute());
         assert!(resolved_subdir.ends_with("demo.cast"));
 
@@ -270,32 +224,20 @@ mod tests {
         let current_dir = env::current_dir().unwrap();
         let absolute_path = current_dir.join("test.cast");
         let absolute_str = absolute_path.to_string_lossy().to_string();
-        let resolved_abs = resolve_cast_file_path(&absolute_str).unwrap();
-        println!(
-            "Absolute path '{}' resolved to: '{}'",
-            absolute_str, resolved_abs
-        );
+        let resolved_abs = resolve_file_path(&absolute_str).unwrap();
         assert_eq!(resolved_abs, absolute_str);
 
         // Test Windows-style path (if on Windows)
         #[cfg(target_os = "windows")]
         {
             let windows_path = r"C:\temp\demo.cast";
-            let resolved_win = resolve_cast_file_path(windows_path).unwrap();
-            println!(
-                "Windows path '{}' resolved to: '{}'",
-                windows_path, resolved_win
-            );
+            let resolved_win = resolve_file_path(windows_path).unwrap();
             assert!(Path::new(&resolved_win).is_absolute());
         }
 
         // Test path with parent directory references
         let complex_path = "./examples/../examples/demo.cast";
-        let resolved_complex = resolve_cast_file_path(complex_path).unwrap();
-        println!(
-            "Complex path '{}' resolved to: '{}'",
-            complex_path, resolved_complex
-        );
+        let resolved_complex = resolve_file_path(complex_path).unwrap();
         assert!(Path::new(&resolved_complex).is_absolute());
         assert!(resolved_complex.ends_with("demo.cast"));
     }
@@ -360,20 +302,12 @@ mod tests {
         // Test relative output path
         let relative_output = "output.svg";
         let resolved = resolve_output_path(relative_output).unwrap();
-        println!(
-            "Relative output path '{}' resolved to: '{}'",
-            relative_output, resolved
-        );
         assert!(Path::new(&resolved).is_absolute());
         assert!(resolved.ends_with("output.svg"));
 
         // Test output path with subdirectory
         let subdir_output = "results/animation.svg";
         let resolved_subdir = resolve_output_path(subdir_output).unwrap();
-        println!(
-            "Subdir output path '{}' resolved to: '{}'",
-            subdir_output, resolved_subdir
-        );
         assert!(Path::new(&resolved_subdir).is_absolute());
         assert!(resolved_subdir.ends_with("animation.svg"));
 
@@ -384,10 +318,6 @@ mod tests {
         // Test complex output path with parent directory references
         let complex_output = "./output/../final/result.svg";
         let resolved_complex = resolve_output_path(complex_output).unwrap();
-        println!(
-            "Complex output path '{}' resolved to: '{}'",
-            complex_output, resolved_complex
-        );
         assert!(Path::new(&resolved_complex).is_absolute());
         assert!(resolved_complex.ends_with("result.svg"));
 
