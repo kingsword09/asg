@@ -1,0 +1,38 @@
+{
+  "name": "asg",
+  "version": "0.1.0",
+  "description": "Asciinema SVG Generator - Convert .cast files to animated SVG",
+  "type": "module",
+  "main": "asg.js",
+  "bin": {
+    "asg": "bin/asg.mjs"
+  },
+  "scripts": {
+    "prebuild": "cargo build --manifest-path ../Cargo.toml -p asg --release --target wasm32-wasip2",
+    "build": "jco transpile ../target/wasm32-wasip2/release/asg.wasm -o . --instantiation=async",
+    "start": "node bin/asg.mjs"
+  },
+  "keywords": [
+    "asciinema",
+    "svg",
+    "terminal",
+    "animation",
+    "converter"
+  ],
+  "author": "Kingsword kingsword09 <kingsword09@gmail.com>",
+  "license": "Apache-2.0",
+  "packageManager": "npm@11.5.1",
+  "dependencies": {
+    "@bytecodealliance/jco": "^1.14.0",
+    "@bytecodealliance/preview2-shim": "^0.17.3"
+  },
+  "files": [
+    "asg.js",
+    "asg.d.ts",
+    "asg.core*.wasm",
+    "interfaces/*.d.ts",
+    "bin/asg.mjs",
+    "README.md",
+    "LICENSE"
+  ]
+}

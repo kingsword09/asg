@@ -21,3 +21,6 @@ Thumbs.db
 # Except example files
 !examples/*.cast
 !examples/*.svg
+
+# npm
+node_modules

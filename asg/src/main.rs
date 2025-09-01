@@ -316,16 +316,14 @@ fn main() -> Result<()> {
     let svg = renderer.render(&frames, &durations)?;
 
     // Write output
-    let output_path = Path::new(&cli.output);
-    if let Some(parent) = output_path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
+    let resolved_output_path = asg::input::resolve_output_path(&cli.output)?;
+    let output_path = Path::new(&resolved_output_path);
 
     let mut file = std::fs::File::create(output_path)?;
     let svg_str = svg.to_string();
     file.write_all(svg_str.as_bytes())?;
 
-    println!("✨ SVG animation saved to: {}", cli.output);
+    println!("✨ SVG animation saved to: {}", resolved_output_path);
     if let Some(at_time) = config.at {
         println!("🖼️  Static frame at {:.2}s", at_time);
     } else {
