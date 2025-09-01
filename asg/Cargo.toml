@@ -25,7 +25,6 @@ clap = { workspace = true, features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
-
 # VTE (Virtual Terminal Emulator) parsing
 vte = "0.15"
 
@@ -51,7 +50,6 @@ reqwest = { version = "0.12", features = ["blocking", "json"] }
 
 [target.wasm32-wasip2.dependencies]
 waki = "0.5"
-
 
 [dev-dependencies]
 tempfile = "3.10"

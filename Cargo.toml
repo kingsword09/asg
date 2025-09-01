@@ -15,5 +15,5 @@ rust-version = "1.85.0"
 clap = { version = "4.5.46", features = ["derive"] }
 
 [profile.release]
-opt-level = 3
 lto = true
+opt-level = 3
