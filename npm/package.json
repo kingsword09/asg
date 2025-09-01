@@ -1,5 +1,5 @@
 {
-  "name": "asg",
+  "name": "asg-cli",
   "version": "0.1.0",
   "description": "Asciinema SVG Generator - Convert .cast files to animated SVG",
   "type": "module",
