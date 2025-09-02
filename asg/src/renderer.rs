@@ -179,11 +179,11 @@ text {{
                 // Find last non-space character to avoid rendering trailing whitespace
                 let mut last_col_opt: Option<usize> = None;
                 for col in (0..frame.width).rev() {
-                    if let Some(cell) = frame.get_cell(row, col)
-                        && cell.ch != ' '
-                    {
-                        last_col_opt = Some(col);
-                        break;
+                    if let Some(cell) = frame.get_cell(row, col) {
+                        if cell.ch != ' ' {
+                            last_col_opt = Some(col);
+                            break;
+                        }
                     }
                 }
 
@@ -200,8 +200,6 @@ text {{
                     let mut bg_run_start: usize = 0;
                     let mut bg_run_color: Option<(u8, u8, u8)> = None;
 
-                    // (helper removed) we'll flush bg runs inline to avoid borrow issues
-
                     for col in 0..=last_col {
                         if let Some(cell) = frame.get_cell(row, col) {
                             let bg_tuple = (cell.bg.r, cell.bg.g, cell.bg.b);
@@ -212,11 +210,8 @@ text {{
                                     bg_run_color = Some(bg_tuple);
                                     bg_run_start = col;
                                 }
-                                (Some(current), true) if current == bg_tuple => {
-                                    // continue run
-                                }
+                                (Some(current), true) if current == bg_tuple => {}
                                 (Some(current), _) => {
-                                    // flush and stop run
                                     if col > bg_run_start {
                                         let width = (col - bg_run_start) as f32 * char_width;
                                         let x = bg_run_start as f32 * char_width;
@@ -232,146 +227,146 @@ text {{
                                     }
                                     bg_run_color = None;
                                 }
-                                (None, false) => {
-                                    // no-op
-                                }
+                                (None, false) => {}
                             }
                         }
                     }
-                    // Flush final bg run
-                    if let Some(color) = bg_run_color {
-                        let end = last_col + 1;
-                        if end > bg_run_start {
-                            let width = (end - bg_run_start) as f32 * char_width;
-                            let x = bg_run_start as f32 * char_width;
-                            let (r, g, b) = color;
-                            let fill = format!("#{:02x}{:02x}{:02x}", r, g, b);
-                            let rect = Rectangle::new()
-                                .set("x", x)
-                                .set("y", 0.0)
-                                .set("width", width)
-                                .set("height", line_height_px)
-                                .set("fill", fill);
-                            bg_group = bg_group.add(rect);
-                        }
-                    }
-
-                    row_group = row_group.add(bg_group);
-
-                    // 2) Foreground text grouped by (fg color + styles)
-                    let mut text_group = Group::new().set(
-                        "transform",
-                        format!("translate(0, {})", self.font_size as f32),
-                    );
-
-                    #[derive(Clone, Copy, PartialEq, Eq)]
-                    struct StyleKey {
-                        fg: (u8, u8, u8),
-                        bold: bool,
-                        italic: bool,
-                        underline: bool,
-                    }
-
-                    let mut run_text = String::new();
-                    let mut run_start_col: usize = 0;
-                    let mut run_key: Option<StyleKey> = None;
-
-                    // (helper removed) we'll flush text runs inline
-
-                    for col in 0..=last_col {
-                        if let Some(cell) = frame.get_cell(row, col) {
-                            let key = StyleKey {
-                                fg: (cell.fg.r, cell.fg.g, cell.fg.b),
-                                bold: cell.bold,
-                                italic: cell.italic,
-                                underline: cell.underline,
-                            };
-                            match run_key {
-                                None => {
-                                    run_key = Some(key);
-                                    run_start_col = col;
-                                    run_text.push(cell.ch);
-                                }
-                                Some(current) if current == key => {
-                                    run_text.push(cell.ch);
-                                }
-                                Some(current) => {
-                                    // flush previous
-                                    if !run_text.is_empty() {
-                                        let x = run_start_col as f32 * char_width;
-                                        let (r, g, b) = current.fg;
-                                        let fill = format!("#{:02x}{:02x}{:02x}", r, g, b);
-                                        let mut el = TextElement::new(run_text.clone())
-                                            .set("x", x)
-                                            .set("fill", fill);
-                                        if current.bold {
-                                            el = el.set("font-weight", "bold");
-                                        }
-                                        if current.italic {
-                                            el = el.set("font-style", "italic");
-                                        }
-                                        if current.underline {
-                                            el = el.set("text-decoration", "underline");
-                                        }
-                                        text_group = text_group.add(el);
-                                    }
-                                    // start new
-                                    run_key = Some(key);
-                                    run_start_col = col;
-                                    run_text.clear();
-                                    run_text.push(cell.ch);
-                                }
-                            }
-                        }
-                    }
-
-                    if let Some(current) = run_key
-                        && !run_text.is_empty()
-                    {
-                        let x = run_start_col as f32 * char_width;
-                        let (r, g, b) = current.fg;
-                        let fill = format!("#{:02x}{:02x}{:02x}", r, g, b);
-                        let mut el = TextElement::new(run_text).set("x", x).set("fill", fill);
-                        if current.bold {
-                            el = el.set("font-weight", "bold");
-                        }
-                        if current.italic {
-                            el = el.set("font-style", "italic");
-                        }
-                        if current.underline {
-                            el = el.set("text-decoration", "underline");
-                        }
-                        text_group = text_group.add(el);
-                    }
-
-                    row_group = row_group.add(text_group);
-                    frame_group = frame_group.add(row_group);
+            // Flush final bg run
+            if let Some(color) = bg_run_color {
+                let end = last_col + 1;
+                if end > bg_run_start {
+                    let width = (end - bg_run_start) as f32 * char_width;
+                    let x = bg_run_start as f32 * char_width;
+                    let (r, g, b) = color;
+                    let fill = format!("#{:02x}{:02x}{:02x}", r, g, b);
+                    let rect = Rectangle::new()
+                        .set("x", x)
+                        .set("y", 0.0)
+                        .set("width", width)
+                        .set("height", line_height_px)
+                        .set("fill", fill);
+                    bg_group = bg_group.add(rect);
                 }
             }
 
-            // Animate opacity for this frame's time slice; chain to previous frame's end
-            let begin_attr = if i == 0 {
-                if self.loop_enable {
-                    format!("0s;{}.end", last_anim_id)
-                } else {
-                    "0s".to_string()
+            row_group = row_group.add(bg_group);
+
+            // 2) Foreground text grouped by (fg color + styles)
+            let mut text_group = Group::new().set(
+                "transform",
+                format!("translate(0, {})", self.font_size as f32),
+            );
+
+            #[derive(Clone, Copy, PartialEq, Eq)]
+            struct StyleKey {
+                fg: (u8, u8, u8),
+                bold: bool,
+                italic: bool,
+                underline: bool,
+            }
+
+            let mut run_text = String::new();
+            let mut run_start_col: usize = 0;
+            let mut run_key: Option<StyleKey> = None;
+
+            // (helper removed) we'll flush text runs inline
+
+            for col in 0..=last_col {
+                if let Some(cell) = frame.get_cell(row, col) {
+                    let key = StyleKey {
+                        fg: (cell.fg.r, cell.fg.g, cell.fg.b),
+                        bold: cell.bold,
+                        italic: cell.italic,
+                        underline: cell.underline,
+                    };
+                    match run_key {
+                        None => {
+                            run_key = Some(key);
+                            run_start_col = col;
+                            run_text.push(cell.ch);
+                        }
+                        Some(current) if current == key => {
+                            run_text.push(cell.ch);
+                        }
+                        Some(current) => {
+                            // flush previous
+                            if !run_text.is_empty() {
+                                let x = run_start_col as f32 * char_width;
+                                let (r, g, b) = current.fg;
+                                let fill = format!("#{:02x}{:02x}{:02x}", r, g, b);
+                                let mut el = TextElement::new(run_text.clone())
+                                    .set("x", x)
+                                    .set("fill", fill);
+                                if current.bold {
+                                    el = el.set("font-weight", "bold");
+                                }
+                                if current.italic {
+                                    el = el.set("font-style", "italic");
+                                }
+                                if current.underline {
+                                    el = el.set("text-decoration", "underline");
+                                }
+                                text_group = text_group.add(el);
+                            }
+                            // start new
+                            run_key = Some(key);
+                            run_start_col = col;
+                            run_text.clear();
+                            run_text.push(cell.ch);
+                        }
+                    }
                 }
+            }
+
+            if let Some(current) = run_key {
+                if !run_text.is_empty() {
+                    let x = run_start_col as f32 * char_width;
+                    let (r, g, b) = current.fg;
+                    let fill = format!("#{:02x}{:02x}{:02x}", r, g, b);
+                    let mut el = TextElement::new(run_text).set("x", x).set("fill", fill);
+                    if current.bold {
+                        el = el.set("font-weight", "bold");
+                    }
+                    if current.italic {
+                        el = el.set("font-style", "italic");
+                    }
+                    if current.underline {
+                        el = el.set("text-decoration", "underline");
+                    }
+                    text_group = text_group.add(el);
+                }
+            }
+
+            row_group = row_group.add(text_group);
+            frame_group = frame_group.add(row_group);
+        }
+
+        // end for row loop
+        }
+
+        // Animate opacity for this frame's time slice; chain to previous frame's end
+        let begin_attr = if i == 0 {
+            if self.loop_enable {
+                format!("0s;{}.end", last_anim_id)
             } else {
-                format!("f{}.end", i - 1)
-            };
-            let anim_id = format!("f{}", i);
-            let dur = durations.get(i).copied().unwrap_or(0.0).max(0.000_001);
-            let anim = Animate::new()
-                .set("id", anim_id.clone())
-                .set("attributeName", "opacity")
-                .set("begin", begin_attr)
-                .set("dur", format!("{:.6}s", dur))
-                // Keep frame visible for the whole duration, then revert to base (0)
-                .set("values", "1;1")
-                .set("keyTimes", "0;1")
-                .set("calcMode", "discrete");
-            frame_group = frame_group.add(anim);
-            frame_groups.push(frame_group);
+                "0s".to_string()
+            }
+        } else {
+            format!("f{}.end", i - 1)
+        };
+        let anim_id = format!("f{}", i);
+        let dur = durations.get(i).copied().unwrap_or(0.0).max(0.000_001);
+        let anim = Animate::new()
+            .set("id", anim_id.clone())
+            .set("attributeName", "opacity")
+            .set("begin", begin_attr)
+            .set("dur", format!("{:.3}s", dur))
+            // Keep frame visible for the whole duration, then revert to base (0)
+            .set("values", "1;1")
+            .set("keyTimes", "0;1")
+            .set("calcMode", "discrete");
+        frame_group = frame_group.add(anim);
+        frame_groups.push(frame_group);
         }
 
         (css, frame_groups)

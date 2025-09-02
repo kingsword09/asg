@@ -137,6 +137,10 @@ struct Cli {
     /// Verbose mode (-v, -vv, -vvv, etc.)
     #[clap(short, long, action = clap::ArgAction::Count)]
     verbose: u8,
+
+    /// Compress output SVG using zstd (writes .zst)
+    #[clap(long)]
+    zstd: bool,
 }
 
 fn main() -> Result<()> {
@@ -315,15 +319,38 @@ fn main() -> Result<()> {
 
     let svg = renderer.render(&frames, &durations)?;
 
-    // Write output
+    // Write output (optionally compressed)
     let resolved_output_path = asg::input::resolve_output_path(&cli.output)?;
     let output_path = Path::new(&resolved_output_path);
-
-    let mut file = std::fs::File::create(output_path)?;
     let svg_str = svg.to_string();
-    file.write_all(svg_str.as_bytes())?;
 
-    println!("✨ SVG animation saved to: {}", resolved_output_path);
+    if cli.zstd {
+        #[cfg(not(target_family = "wasm"))]
+        {
+            use std::fs::File;
+            // If output doesn't already end with .zst, append .zst to the extension
+            let mut zpath = output_path.to_path_buf();
+            if let Some(ext) = output_path.extension().and_then(|e| e.to_str()) {
+                let new_ext = format!("{}.zst", ext);
+                let _ = zpath.set_extension(new_ext);
+            } else {
+                let _ = zpath.set_extension("zst");
+            }
+            let mut f = File::create(&zpath)?;
+            let mut enc = zstd::stream::Encoder::new(&mut f, 0)?; // 0 = default level
+            enc.write_all(svg_str.as_bytes())?;
+            enc.finish()?; // finalize
+            println!("✨ SVG (zstd) saved to: {}", zpath.display());
+        }
+        #[cfg(target_family = "wasm")]
+        {
+            anyhow::bail!("zstd compression is not supported on wasm target");
+        }
+    } else {
+        let mut file = std::fs::File::create(output_path)?;
+        file.write_all(svg_str.as_bytes())?;
+        println!("✨ SVG animation saved to: {}", resolved_output_path);
+    }
     if let Some(at_time) = config.at {
         println!("🖼️  Static frame at {:.2}s", at_time);
     } else {

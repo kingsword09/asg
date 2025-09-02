@@ -47,6 +47,7 @@ rgb = "0.8"
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 reqwest = { version = "0.12", features = ["blocking", "json"] }
+zstd = "0.13"
 
 [target.wasm32-wasip2.dependencies]
 waki = "0.5"
