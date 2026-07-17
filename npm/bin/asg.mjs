@@ -16,13 +16,11 @@ async function main() {
                 environment: {
                     ...cliShim.environment,
                     getArguments() {
-                        const args = [];
-                        for (const p of process.argv) {
-                            if (p.endsWith("node") || p.endsWith("node.exe")) {
-                                continue;
-                            }
-
-                            if (p.endsWith(".cast") || p.endsWith(".svg")) {
+                        const args = ["asg"];
+                        for (const p of process.argv.slice(2)) {
+                            const isUrl = p.startsWith("http://") || p.startsWith("https://");
+                            const isPath = p.endsWith(".cast") || p.endsWith(".cast.zst") || p.endsWith(".svg");
+                            if (!isUrl && isPath) {
                                 args.push(path.resolve(process.cwd(), p));
                                 continue;
                             }

@@ -1,4 +1,4 @@
-/** @module Interface wasi:io/poll@0.2.3 **/
+/** @module Interface wasi:io/poll@0.2.6 **/
 
 export class Pollable {
   /**

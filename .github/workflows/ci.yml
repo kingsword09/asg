@@ -20,11 +20,14 @@ jobs:
         uses: dtolnay/rust-toolchain@nightly
         with:
           components: rustfmt,clippy
+          targets: wasm32-wasip2
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:
           tool: typos-cli,taplo-cli
       - run: cargo +nightly x lint
+      - run: cargo +nightly x test
+      - run: cargo +nightly build -p asg --target wasm32-wasip2 --release
 
   publish:
     name: Publish to crates.io
@@ -55,11 +58,13 @@ jobs:
             echo "Detected release version: $VERSION"
             cargo publish -p asg
             echo "Published to crates.io"
-            npm ci
-            npm run prebuild
-            npm run build
-            npm version "${VERSION#v}" --no-git-tag-version
-            npm publish --access public
+            (
+              cd npm
+              npm ci
+              npm run build
+              npm version "${VERSION#v}" --no-git-tag-version
+              npm publish --access public
+            )
             echo "Published to npm"
             echo "version=$VERSION" >> $GITHUB_OUTPUT
           else

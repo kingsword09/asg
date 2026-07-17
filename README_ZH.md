@@ -1,216 +1,115 @@
-# ASG - Asciinema SVG Generator
+# ASG — asciicast v3 转 SVG
 
-将 Asciinema 录制文件（`.cast`）转换为动画 SVG 文件的 Rust 命令行工具。
+ASG 是一个 Rust CLI 与库，**只解析 asciicast v3**，将录制转换为紧凑、独立、可直接嵌入 README 的动画 SVG。本次实现已经抛弃原有 v2 数据模型、手写终端状态机和逐帧 SMIL 输出方案，并以 `svg-term-cli` 的画布几何与紧凑 reel 结构为兼容基准。
 
-English documentation: see README.md
+详细设计、旧实现问题与验收依据见 [docs/architecture.md](docs/architecture.md)。
 
-## 特性
+## 已支持范围
 
-- 🎬 支持 Asciicast v2 格式
-- 🌐 支持本地文件、远程 URL 与 Asciinema 录制 ID
-- 🎨 完整的 ANSI 颜色与文本样式支持（按单元格渲染前景/背景色，支持粗体/斜体/下划线）
-- ⚡ 高性能终端模拟器（基于 `vte`）
-- 📦 生成独立的动画 SVG 文件（无需额外资源）
-- 🔧 可自定义字体、字号、行高、主题与留白
+- v3 嵌套 `term` 头信息、8/16 色终端主题
+- v3 相对时间间隔及正确的累计时间轴
+- `o` 输出、`i` 输入、`r` resize、`m` marker、`x` exit 与未知事件
+- 普通 `.cast` 和 zstd 压缩 `.cast.zst`
+- 本地文件、stdin、HTTP(S) URL、asciinema.org 录制 ID
+- 基于 asciinema `avt` 的 ANSI/DEC 终端模拟
+- 16/256/真彩色、反色、粗体、淡化、斜体、下划线、删除线、闪烁、宽字符、备用屏、光标与 resize
+- speed、header/CLI idle limit、FPS 上限、静态帧、时间范围、主题、padding、窗口装饰
+- 原生 Rust 与 `wasm32-wasip2`
 
-## 安装
-
-### 通过 npm 安装（推荐）
-
-ASG 提供 npm 包 `@kingsword/asg`，安装后命令名为 `asg`。
-
-- 全局安装：
+本项目有意拒绝 v1/v2，避免把 v2 绝对时间错误地当成 v3 增量时间。旧录制可先转换：
 
 ```bash
-npm i -g @kingsword/asg
-# 然后
-asg --help
+asciinema convert old.cast recording-v3.cast
 ```
 
-- 临时一次性使用（无需全局安装）：
+## 构建与使用
 
 ```bash
-npx -p @kingsword/asg asg --help
+cargo build --release -p asg
+
+asg recording.cast recording.svg
+asg recording.cast.zst recording.svg
+cat recording.cast | asg - - > recording.svg
+
+# 时间单位为秒
+asg recording.cast still.svg --at 4.5
+asg recording.cast excerpt.svg --from 3 --to 12
+
+asg recording.cast window.svg --window --no-cursor
 ```
 
-说明：
-- 包名是 `@kingsword/asg`，但安装的命令叫 `asg`（来自 package.json 的 `bin` 字段）。
-- 目前未在 crates.io 发布可直接 `cargo install asg` 的预构建二进制/动态库；如需原生二进制，请参考下方“从源码构建”。
-
-### 从源码构建
+npm/WASI 版本安装后提供相同命令：
 
 ```bash
-# 克隆仓库
-git clone https://github.com/kingsword09/asg.git
-cd asg
-
-# 构建发布版本
-cargo build --release
-
-# 安装到系统（可选）
-cargo install --path .
+npm install -g @kingsword/asg
 ```
 
-### 依赖项
+主要参数：
 
-- Rust（stable 渠道）
-- Cargo 包管理器
+```text
+--speed <N>                  播放倍速
+--fps <N>                    每秒最大视觉帧数，默认 30
+--idle-time-limit <SECONDS>  覆盖 v3 header 的空闲时间限制
+--cols/--width <N>           固定终端列数
+--rows/--height <N>          固定终端行数
+--font-size <PX>             输出字号，默认 16.7
+--line-height <N>            行高倍数，默认 1.3
+--padding[-x|-y] <PX>        输出留白，默认 0
+--theme <NAME|COLORS>        命名主题或 18 色自定义主题
+--no-cursor --no-loop --window
+```
 
-## 使用方法
+## 与 svg-term-cli 的尺寸和体积对齐
 
-### 基本用法
+默认几何严格使用 svg-term 坐标体系：
+
+- 宽度 = `列数 × 10px`
+- 高度 = `行数 × 16.7px × 1.3`
+- padding = `0px`
+- 未提供录制主题时使用 svg-term 的 Atom One 配色
+
+仓库中语义等价的 80×16 demo 实测：
+
+| 生成器 | SVG 字节数 | 画布 |
+|---|---:|---:|
+| 旧 ASG | 5,309,409 | 默认尺寸不一致 |
+| `svg-term-cli` 基准 | 791,872 | 800×347.36 |
+| 新 ASG | 364,504 | 800×347.36 |
+
+新实现对该样例比 svg-term-cli 小约 54%，比旧 ASG 小约 93%。不同录制的结果会随画面变化频率而变化。
+
+体积优化没有依赖不可维护的字符串后处理，而是在模型层完成：
+
+- 只为真正改变屏幕的 output/resize 建帧；input/marker/exit 只推进时间
+- 相同视觉状态去重
+- FPS 是“合并时间窗”，不再复制整屏制造固定帧
+- 重复行注册到 `<defs>`，每帧用 `<use>` 引用
+- 文本样式共用 CSS class
+- 所有帧横向排列，仅用一个离散 CSS reel 动画切换
+- SVG 直接紧凑编码，不再生成大量空 `<g>` 和格式化空白
+
+## 模块边界
+
+- `asciicast.rs`：v3 严格解析与元数据校验
+- `terminal.rs`：`avt` 的最小适配层
+- `timeline.rs`：时间变换、resize、视觉去重、FPS、range/at
+- `renderer.rs`：紧凑 SVG、行/样式注册表、reel 动画
+- `input.rs`：本地/stdin/HTTP、zstd 自动识别、输出
+- `lib.rs`：库级编排和主题优先级
+- `main.rs`：仅负责 CLI
+
+主题优先级为：CLI/API 显式主题 > v3 header 主题 > svg-term 默认主题。
+
+resize 会在事件发生时真实作用于终端并执行重排。由于 SVG 根画布不能在动画中改变固有尺寸，最终画布取录制过程中出现过的最大终端尺寸；`--cols` / `--rows` 可以固定对应轴。
+
+## 验证
 
 ```bash
-# 转换本地 .cast 文件
-asg examples/demo.cast examples/demo.svg
-
-# 指定输出文件名（第二个位置参数）
-asg demo.cast output.svg
-
-# 从 asciinema.org 下载并转换（使用录制 ID）
-asg 113643 output.svg
-
-# 使用自定义字体
-asg demo.cast output.svg --font-family "JetBrains Mono,Monaco,Consolas,Liberation Mono,Menlo,monospace"
+cargo test --workspace
+cargo clippy --tests --all-features --all-targets --workspace -- -D warnings
+cargo build -p asg --target wasm32-wasip2 --release
 ```
-
-### 命令行参数
-
-```
-USAGE:
-    asg <INPUT> <OUTPUT> [OPTIONS]
-
-ARGS:
-    <INPUT>     Path to .cast file, URL, or remote ID (e.g., '113643')
-    <OUTPUT>    Output SVG file path
-
-OPTIONS:
-        --theme <THEME>              Select color theme (or provide comma-separated hex colors)
-        --speed <SPEED>              Adjust playback speed [default: 1.0]
-        --fps <FPS>                  Frames per second [default: 30]
-        --font-family <FONT_FAMILY>  Font family for the terminal text
-                                     [default: JetBrains Mono,Monaco,Consolas,Liberation Mono,Menlo,monospace]
-        --font-size <PX>             Font size in pixels [default: 14]
-    -i, --idle-time-limit <SECS>     Idle time limit in seconds
-        --cols <COLS>                Override terminal width (columns)
-        --rows <ROWS>                Override terminal height (rows)
-        --font-dir <DIR>             Path to a directory containing font files
-        --no-loop                    Disable animation loop
-        --line-height <FLOAT>        Line height [default: 1.4]
-        --at <SECS>                  Timestamp of frame to render (static image)
-        --from <SECS>                Lower range of timeline to render
-        --to <SECS>                  Upper range of timeline to render
-        --no-cursor                  Disable cursor rendering
-        --window                     Render with window decorations
-        --padding <PX>               Distance between text and image bounds [default: 10]
-        --padding-x <PX>             Override padding on x axis
-        --padding-y <PX>             Override padding on y axis
-        --timeline <MODE>            Timeline mode: original|fixed [default: original]
-    -v, --verbose                    Verbose output (-v, -vv, -vvv)
-    -h, --help                       Print help information
-```
-
-## 架构设计
-
-ASG 采用模块化架构，主要包含以下模块：
-
-- `src/input.rs` — 输入处理层：统一处理本地文件、URL、远程 ID
-- `src/asciicast.rs` — Asciicast v2 格式解析器
-- `src/terminal.rs` — 基于 `vte` 的终端模拟器（解析 ANSI/SGR，生成帧）
-- `src/renderer.rs` — SVG 渲染与 CSS 动画生成
-- `src/main.rs` — CLI 入口与整体流程协作
-
-### 数据流
-
-```
-输入（文件/URL/ID）
-    ↓
-输入处理器
-    ↓
-.cast 数据流 (NDJSON)
-    ↓
-Asciicast 解析器
-    ↓
-终端模拟器（VTE）
-    ↓
-帧序列（包含单元格 fg/bg 与样式）
-    ↓
-SVG 渲染器
-    ↓
-动画 SVG 文件
-```
-
-## 技术要点
-
-### 终端模拟
-
-- 使用 `vte` 解析 ANSI 转义序列
-- 完整支持 SGR 参数：前景/背景色（标准/亮色/256 色/真彩），粗体、斜体、下划线
-- 支持光标移动、清屏等控制序列
-
-### SVG 渲染
-
-- 使用 CSS Keyframes 与每帧不透明度切换实现动画
-- 按行分组：保证背景矩形绘制在文字下方
-- 背景：按连续相同背景色的单元格合并为 `<rect>` 以减少元素数量
-- 文本：按（前景色 + 样式）分组；对 `<text>` 设置 `font-weight`/`font-style`/`text-decoration`
-- 支持可配置的字体、字号、行高与留白（padding）
-
-### 性能优化
-
-- 流式解析：逐条事件处理（无需一次性加载完整文件）
-- 只记录状态变化，减少内存与输出体积
-- 合并背景与文本运行，控制 SVG 元素数量
-
-## 示例
-
-### 本地文件转换
-
-```bash
-# 录制终端会话
-asciinema rec demo.cast
-
-# 转换为 SVG
-asg demo.cast demo.svg
-
-# 浏览器打开
-open demo.svg
-```
-
-### 远程录制转换
-
-```bash
-# 从 asciinema.org 获取录制（ID）
-asg 113643 terminal-demo.svg
-```
-
-## 贡献
-
-欢迎提交 Issue 和 Pull Request！
-
-### 开发
-
-```bash
-# 运行测试
-cargo test
-
-# 静态检查
-cargo clippy
-
-# 格式化
-cargo fmt
-```
-
-## 相关项目
-
-- [asciinema](https://github.com/asciinema/asciinema) — 终端录制工具
-- [svg-term-cli](https://github.com/marionebl/svg-term-cli) — JavaScript 实现的 SVG 生成器
-- [agg](https://github.com/asciinema/agg) — Asciinema GIF 生成器
 
 ## 许可证
 
-Apache-2.0 License
-
-## 作者
-
-Kingsword <kingsword09@gmail.com>
+Apache-2.0；`avt` 同样使用 Apache-2.0。

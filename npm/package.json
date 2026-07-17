@@ -1,7 +1,7 @@
 {
   "name": "@kingsword/asg",
   "version": "0.1.0",
-  "description": "Asciinema SVG Generator - Convert .cast files to animated SVG",
+  "description": "Convert asciicast v3 recordings to compact animated SVG",
   "type": "module",
   "main": "asg.js",
   "bin": {

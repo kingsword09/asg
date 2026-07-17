@@ -1,4 +1,2 @@
-/** @module Interface wasi:clocks/monotonic-clock@0.2.3 **/
-export function now(): Instant;
+/** @module Interface wasi:clocks/monotonic-clock@0.2.6 **/
 export type Duration = bigint;
-export type Instant = bigint;
