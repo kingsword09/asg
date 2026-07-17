@@ -22,7 +22,7 @@ asg recording.cast window.svg --window --no-cursor
 
 Input can be a local path, `-` for stdin, an HTTP(S) URL, or an asciinema.org recording ID. Output can be a path or `-` for stdout. Timeline options use seconds.
 
-ASG supports v3 relative timing, terminal resize, v3 header themes, all event codes, zstd input, ANSI/DEC terminal behavior, static/range selection, idle limiting, FPS capping, and svg-term-compatible default geometry.
+ASG supports v3 relative timing, terminal resize, v3 header themes, all event codes, zstd input, ANSI/DEC terminal behavior, static/range selection, idle limiting, FPS capping, and sharp pixel-native default geometry.
 
 v1/v2 are intentionally rejected. Convert old recordings first:
 
@@ -30,7 +30,7 @@ v1/v2 are intentionally rejected. Convert old recordings first:
 asciinema convert old.cast recording-v3.cast
 ```
 
-Default canvas geometry matches svg-term-cli (`cols × 10px`, `rows × 16.7px × 1.3`, zero padding), while line/style reuse generally produces a smaller SVG.
+Default geometry uses a 16px font, 10px cells, 22px rows, a 1:1 physical-pixel viewBox, and zero padding. Unicode text-symbol selection and native SVG paths for common terminal graphics provide agg-like clarity, while line/style reuse keeps the SVG compact.
 
 See the repository [README](https://github.com/kingsword09/asg#readme) for all options and architecture details.
 

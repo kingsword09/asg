@@ -80,10 +80,10 @@ mod tests {
 
         let document = roxmltree::Document::parse(&result.data).unwrap();
         let root = document.root_element();
-        let width: f64 = root.attribute("width").unwrap().parse().unwrap();
-        let height: f64 = root.attribute("height").unwrap().parse().unwrap();
+        let width: usize = root.attribute("width").unwrap().parse().unwrap();
+        let height: usize = root.attribute("height").unwrap().parse().unwrap();
 
-        assert_eq!(width, result.cols as f64 * 10.0);
-        assert!((height - result.rows as f64 * 16.7 * 1.3).abs() < 0.000_001);
+        assert_eq!(width, result.cols * 10);
+        assert_eq!(height, result.rows * 22);
     }
 }

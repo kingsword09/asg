@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use anyhow::{Context, Result};
-use asg::renderer::RenderOptions;
+use asg::renderer::{DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT, RenderOptions};
 use asg::theme::Theme;
 use asg::timeline::TimelineOptions;
 use asg::{Config, generate};
@@ -37,16 +37,16 @@ struct Cli {
     /// CSS font stack
     #[arg(
         long,
-        default_value = "Monaco,Consolas,Menlo,'Bitstream Vera Sans Mono','Powerline Symbols',monospace"
+        default_value = DEFAULT_FONT_FAMILY
     )]
     font_family: String,
 
     /// Font size in output pixels
-    #[arg(long, default_value_t = 16.7)]
+    #[arg(long, default_value_t = DEFAULT_FONT_SIZE)]
     font_size: f64,
 
     /// Line-height multiplier
-    #[arg(long, default_value_t = 1.3)]
+    #[arg(long, default_value_t = DEFAULT_LINE_HEIGHT)]
     line_height: f64,
 
     /// Maximum idle gap in seconds (overrides the v3 header)
@@ -185,11 +185,12 @@ mod tests {
     }
 
     #[test]
-    fn defaults_match_svg_term_geometry() {
+    fn defaults_use_pixel_native_geometry() {
         let cli = Cli::try_parse_from(["asg", "in.cast", "out.svg"]).unwrap();
 
-        assert_eq!(cli.font_size, 16.7);
-        assert_eq!(cli.line_height, 1.3);
+        assert_eq!(cli.font_size, DEFAULT_FONT_SIZE);
+        assert_eq!(cli.line_height, DEFAULT_LINE_HEIGHT);
+        assert_eq!(cli.font_family, DEFAULT_FONT_FAMILY);
         assert_eq!(cli.padding, 0.0);
     }
 }
