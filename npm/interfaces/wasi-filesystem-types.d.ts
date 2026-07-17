@@ -1,4 +1,4 @@
-/** @module Interface wasi:filesystem/types@0.2.3 **/
+/** @module Interface wasi:filesystem/types@0.2.6 **/
 export function filesystemErrorCode(err: Error): ErrorCode | undefined;
 export interface DescriptorFlags {
   read?: boolean,

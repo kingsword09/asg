@@ -1,4 +1,4 @@
-/** @module Interface wasi:http/types@0.2.2 **/
+/** @module Interface wasi:http/types@0.2.4 **/
 export interface DnsErrorPayload {
   rcode?: string,
   infoCode?: number,
