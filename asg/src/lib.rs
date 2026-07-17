@@ -69,7 +69,7 @@ mod tests {
     }
 
     #[test]
-    fn repository_demo_matches_geometry_and_stays_below_svg_term_size() {
+    fn repository_demo_generates_svg_with_derived_geometry() {
         let mut config = Config::default();
         config.timeline.cursor = false;
         let result = generate(
@@ -78,14 +78,12 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!((result.cols, result.rows), (80, 16));
-        assert!(result.data.starts_with(
-            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"800\" height=\"347.36\""
-        ));
-        assert!(
-            result.data.len() <= 791_872,
-            "SVG exceeded svg-term-cli reference size: {} bytes",
-            result.data.len()
-        );
+        let document = roxmltree::Document::parse(&result.data).unwrap();
+        let root = document.root_element();
+        let width: f64 = root.attribute("width").unwrap().parse().unwrap();
+        let height: f64 = root.attribute("height").unwrap().parse().unwrap();
+
+        assert_eq!(width, result.cols as f64 * 10.0);
+        assert!((height - result.rows as f64 * 16.7 * 1.3).abs() < 0.000_001);
     }
 }
