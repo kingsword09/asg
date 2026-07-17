@@ -48,7 +48,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.91.0
         with:
           targets: wasm32-wasip2
       - name: Setup Node.js for npm publish
@@ -88,6 +88,12 @@ jobs:
         run: |
           npm ci
           npm run build
+      - name: Smoke test npm CLI filesystem
+        working-directory: npm
+        run: |
+          OUTPUT="$RUNNER_TEMP/asg-smoke.svg"
+          node bin/asg.mjs ../examples/demo.cast "$OUTPUT" --window
+          test -s "$OUTPUT"
       - uses: rust-lang/crates-io-auth-action@v1
         id: auth
       - name: Publish to crates.io

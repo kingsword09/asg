@@ -1,6 +1,6 @@
 {
   "name": "@kingsword/asg",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Convert asciicast v3 recordings to compact animated SVG",
   "type": "module",
   "main": "asg.js",
