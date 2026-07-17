@@ -1,6 +1,6 @@
 # ASG — asciicast v3 转 SVG
 
-ASG 是一个 Rust CLI 与库，**只解析 asciicast v3**，将录制转换为紧凑、独立、可直接嵌入 README 的动画 SVG。本次实现已经抛弃原有 v2 数据模型、手写终端状态机和逐帧 SMIL 输出方案，并以 `svg-term-cli` 的画布几何与紧凑 reel 结构为兼容基准。
+ASG 是一个 Rust CLI 与库，**只解析 asciicast v3**，将录制转换为紧凑、独立、可直接嵌入 README 的动画 SVG。本次实现已经抛弃原有 v2 数据模型、手写终端状态机和逐帧 SMIL 输出方案；保留 `svg-term-cli` 熟悉的紧凑 reel 与默认 10px 列宽，同时改用像素原生几何提升浏览器显示清晰度。
 
 详细设计、旧实现问题与验收依据见 [docs/architecture.md](docs/architecture.md)。
 
@@ -52,31 +52,35 @@ npm install -g @kingsword/asg
 --idle-time-limit <SECONDS>  覆盖 v3 header 的空闲时间限制
 --cols/--width <N>           固定终端列数
 --rows/--height <N>          固定终端行数
---font-size <PX>             输出字号，默认 16.7
---line-height <N>            行高倍数，默认 1.3
+--font-size <PX>             输出字号，默认 16
+--line-height <N>            行高倍数，默认 1.4
 --padding[-x|-y] <PX>        输出留白，默认 0
 --theme <NAME|COLORS>        命名主题或 18 色自定义主题
 --no-cursor --no-loop --window
 ```
 
-## 与 svg-term-cli 的尺寸和体积对齐
+## 清晰度与输出体积
 
-默认几何严格使用 svg-term 坐标体系：
+默认几何将每个终端边界固定在物理像素网格上：
 
-- 宽度 = `列数 × 10px`
-- 高度 = `行数 × 16.7px × 1.3`
+- 字号 = `16px`
+- 列宽 = `round(字号 × 0.6) = 10px`
+- 行高 = `round(字号 × 1.4) = 22px`
+- 宽度 = `列数 × 10px`，高度 = `行数 × 22px`
 - padding = `0px`
 - 未提供录制主题时使用 svg-term 的 Atom One 配色
 
-仓库中语义等价的 80×16 demo 实测：
+根与内部 `viewBox` 都和各自物理画布保持 1:1，文本基线、行偏移和帧位移全部是整数，并关闭 kerning/ligature。字体栈参考 agg，优先使用 JetBrains Mono、Fira Code 与 SF Mono，在彩色 emoji 前解析终端符号，并对 agg 会交给符号字体的字符请求 Unicode 文本呈现。常用 box-drawing 与块元素直接编码为清晰 SVG path，不再依赖字体拼接，避免旧版 10 倍缩放、小数像素和线段接缝造成的发糊。
 
-| 生成器 | SVG 字节数 | 画布 |
+仓库中的实际 108×32 v3 demo 实测：
+
+| 产物 | 字节数 | 画布 |
 |---|---:|---:|
-| 旧 ASG | 5,309,409 | 默认尺寸不一致 |
-| `svg-term-cli` 基准 | 791,872 | 800×347.36 |
-| 新 ASG | 364,504 | 800×347.36 |
+| v3 cast 输入 | 720,855 | 108×32 cells |
+| 旧版小数几何 SVG | 252,731 | 1080×694.72 |
+| 像素原生 SVG | 290,902 | 1080×704 |
 
-新实现对该样例比 svg-term-cli 小约 54%，比旧 ASG 小约 93%。不同录制的结果会随画面变化频率而变化。
+完整清晰度优化使 SVG 增加约 15.10%，主要来自宽字符按准确终端单元格隔离，以及终端图形脱离字体独立编码；最终文件仍只有 cast 输入的 40.36%。`svg-term-cli` 无法解析该 v3 录制，因此不能直接转换仓库 demo 做同源比较。
 
 体积优化没有依赖不可维护的字符串后处理，而是在模型层完成：
 
@@ -87,6 +91,8 @@ npm install -g @kingsword/asg
 - 文本样式共用 CSS class
 - 所有帧横向排列，仅用一个离散 CSS reel 动画切换
 - SVG 直接紧凑编码，不再生成大量空 `<g>` 和格式化空白
+
+SVG 文本仍使用观看设备本地安装的字体。若要求所有设备与 agg 完全逐像素一致，就必须嵌入或栅格化字体，这会显著增加体积；当前实现有意保留矢量、紧凑的输出形式。仓库 demo 已在原生尺寸和 74% 浏览器预览缩放下，与 agg 1.9.0 的同一 10s、60s、100s、120s 画面逐一检查。
 
 ## 模块边界
 

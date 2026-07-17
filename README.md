@@ -1,6 +1,6 @@
 # ASG — asciicast v3 to SVG
 
-ASG is a Rust CLI and library that converts **asciicast v3 only** recordings into compact, self-contained animated SVG files. It is a from-scratch replacement for the previous v2 implementation and targets the output geometry and compact reel model of `svg-term-cli` while supporting asciinema 3 recordings.
+ASG is a Rust CLI and library that converts **asciicast v3 only** recordings into compact, self-contained animated SVG files. It is a from-scratch replacement for the previous v2 implementation. It keeps the compact reel model and 10px default column width familiar from `svg-term-cli`, but uses pixel-native geometry for sharper browser rendering.
 
 Chinese documentation: [README_ZH.md](README_ZH.md). Design details and measured trade-offs: [docs/architecture.md](docs/architecture.md).
 
@@ -50,7 +50,7 @@ cat recording.cast | asg - - > recording.svg
 asg recording.cast still.svg --at 4.5
 asg recording.cast excerpt.svg --from 3 --to 12
 
-# svg-term-compatible dimensions with decorations
+# Pixel-native terminal with decorations
 asg recording.cast window.svg --window --no-cursor
 ```
 
@@ -62,8 +62,8 @@ Run `asg --help` for the complete option list. Useful options include:
 --idle-time-limit <SECONDS>  override the v3 header idle limit
 --cols/--width <N>           pin terminal columns
 --rows/--height <N>          pin terminal rows
---font-size <PX>             output font size (default 16.7)
---line-height <N>            line-height multiplier (default 1.3)
+--font-size <PX>             output font size (default 16)
+--line-height <N>            line-height multiplier (default 1.4)
 --padding[-x|-y] <PX>        output padding (default 0)
 --theme <NAME|COLORS>        named or custom 18-color theme
 --no-cursor --no-loop --window
@@ -71,26 +71,32 @@ Run `asg --help` for the complete option list. Useful options include:
 
 Named themes are `svg-term`, `atom-one`, `asciinema`, `dracula`, `github-dark`, `github-light`, `monokai`, `solarized-dark`, and `solarized-light`.
 
-## svg-term geometry and size
+## Rendering clarity and size
 
-The defaults deliberately use svg-term's coordinate system:
+The defaults deliberately keep every terminal boundary on the physical pixel grid:
 
-- width = `columns × 10 px`
-- height = `rows × 16.7 px × 1.3`
+- font size = `16 px`
+- cell width = `round(font size × 0.6) = 10 px`
+- row height = `round(font size × 1.4) = 22 px`
+- width = `columns × 10 px`; height = `rows × 22 px`
 - default padding = `0 px`
 - default unthemed palette = svg-term's Atom One palette
 
-For the repository's equivalent 80×16 demo recording:
+The root and inner `viewBox` values equal their physical canvases, text baselines and frame offsets are integers, and kerning/ligatures are disabled. An agg-inspired fallback stack starts with JetBrains Mono, Fira Code, and SF Mono, resolves terminal symbols before color emoji, and requests Unicode text presentation where agg would use its symbol font. Common box-drawing and block glyphs are emitted as crisp SVG paths rather than font glyphs. This avoids both the fractional 10× scaling and the small seams commonly seen between terminal line characters.
 
-| Generator | SVG bytes | Canvas |
+For the repository's actual 108×32 v3 demo:
+
+| Artifact | Bytes | Canvas |
 |---|---:|---:|
-| Previous ASG implementation | 5,309,409 | mismatched defaults |
-| `svg-term-cli` reference | 791,872 | 800×347.36 |
-| Rewritten ASG | 364,504 | 800×347.36 |
+| v3 cast input | 720,855 | 108×32 cells |
+| Previous fractional SVG | 252,731 | 1080×694.72 |
+| Pixel-native SVG | 290,902 | 1080×704 |
 
-The new encoder is about 54% smaller than the reference and 93% smaller than the old ASG output for this sample. Results vary with terminal activity.
+The complete clarity pass adds 15.10% to this SVG, mainly from isolating wide glyphs and encoding terminal graphics independently from fonts, but the result remains only 40.36% of the cast input. `svg-term-cli` cannot parse this v3 recording, so a direct conversion of the repository demo is not possible.
 
 The reduction comes from emitting only visual changes, capping rather than duplicating frames, reusing identical lines through `<defs>/<use>`, sharing style classes, and moving one horizontal SVG reel with a single discrete CSS animation.
+
+SVG text still uses fonts installed on the viewer's system. Exact cross-device pixels would require embedding or rasterizing a font, which would substantially increase output size; ASG intentionally keeps the output vector-based and compact. At native size and at a 74% browser preview scale, the repository demo was visually checked against agg 1.9.0 at the same 10s, 60s, 100s, and 120s positions.
 
 ## Architecture
 
