@@ -1,0 +1,4 @@
+interface:
+  display_name: "ASG Terminal SVG"
+  short_description: "Render asciicast v3 recordings as SVG"
+  default_prompt: "Use $asg to convert this asciicast v3 recording into a sharp, README-ready SVG."

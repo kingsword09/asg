@@ -27,6 +27,16 @@ asg recording.cast recording.svg --window
 
 The package runs the Rust CLI as a precompiled `wasm32-wasip2` component. It does not compile Rust on the user's machine.
 
+## Agent Skill
+
+Install the repository's portable [ASG Agent Skill](https://github.com/kingsword09/asg/blob/main/skills/asg/SKILL.md), built to the [Agent Skills specification](https://agentskills.io/home), with Vercel's [Skills CLI](https://github.com/vercel-labs/skills):
+
+```bash
+npx skills add kingsword09/asg --skill asg
+```
+
+The skill teaches compatible agents how to install the CLI, choose rendering options, validate generated SVGs, and troubleshoot v3 cast conversions.
+
 ## Inputs
 
 - local `.cast` and zstd-compressed `.cast.zst` files;

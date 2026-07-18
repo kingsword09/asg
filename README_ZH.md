@@ -44,6 +44,16 @@ npm install -g @kingsword/asg
 asg recording.cast recording.svg --window
 ```
 
+## Agent Skill
+
+仓库内提供了一个符合 [Agent Skills 规范](https://agentskills.io/home)的可移植 [ASG Skill](skills/asg/SKILL.md)，帮助智能体安装 CLI、选择渲染参数、验证输出并排查终端 SVG 问题。使用 Vercel 的 [Skills CLI](https://github.com/vercel-labs/skills) 安装：
+
+```bash
+npx skills add kingsword09/asg --skill asg
+```
+
+如需无交互全局安装，可增加 `-g -y`；安装后可要求智能体：`使用 $asg 将这个 asciicast v3 录制转换为适合 README 的 SVG。`
+
 ## 应该选择哪个终端渲染工具？
 
 | 工具 | 输出 | asciicast 支持 | 最适合 |

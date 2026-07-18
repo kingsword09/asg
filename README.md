@@ -44,6 +44,16 @@ Both install an `asg` command with the same interface:
 asg recording.cast recording.svg --window
 ```
 
+## Agent Skill
+
+This repository includes a portable [ASG Agent Skill](skills/asg/SKILL.md), built to the [Agent Skills specification](https://agentskills.io/home), for installing the CLI, choosing render options, validating output, and troubleshooting terminal SVGs. Install it with Vercel's [Skills CLI](https://github.com/vercel-labs/skills):
+
+```bash
+npx skills add kingsword09/asg --skill asg
+```
+
+Use `-g -y` for a non-interactive global install, then ask your agent to `Use $asg to convert this asciicast v3 recording into a README-ready SVG.`
+
 ## Which terminal renderer should I use?
 
 | Tool | Output | Asciicast support | Best fit |
