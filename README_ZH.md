@@ -1,50 +1,108 @@
-# ASG — asciicast v3 转 SVG
+# ASG
 
-ASG 是一个 Rust CLI 与库，**只解析 asciicast v3**，将录制转换为紧凑、独立、可直接嵌入 README 的动画 SVG。本次实现已经抛弃原有 v2 数据模型、手写终端状态机和逐帧 SMIL 输出方案；保留 `svg-term-cli` 熟悉的紧凑 reel 与默认 10px 列宽，同时改用像素原生几何提升浏览器显示清晰度。
+> 将 asciicast v3 录制转换为清晰、紧凑的动画 SVG。
 
-详细设计、旧实现问题与验收依据见 [docs/architecture.md](docs/architecture.md)。
+[![CI](https://github.com/kingsword09/asg/actions/workflows/ci.yml/badge.svg)](https://github.com/kingsword09/asg/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/asg.svg)](https://crates.io/crates/asg)
+[![npm](https://img.shields.io/npm/v/%40kingsword%2Fasg.svg)](https://www.npmjs.com/package/@kingsword/asg)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-## 已支持范围
+[English](README.md)
 
-- v3 嵌套 `term` 头信息、8/16 色终端主题
-- v3 相对时间间隔及正确的累计时间轴
-- `o` 输出、`i` 输入、`r` resize、`m` marker、`x` exit 与未知事件
-- 普通 `.cast` 和 zstd 压缩 `.cast.zst`
-- 本地文件、stdin、HTTP(S) URL、asciinema.org 录制 ID
-- 基于 asciinema `avt` 的 ANSI/DEC 终端模拟
-- 16/256/真彩色、反色、粗体、淡化、斜体、下划线、删除线、闪烁、宽字符、备用屏、光标与 resize
-- speed、header/CLI idle limit、FPS 上限、静态帧、时间范围、主题、padding、窗口装饰
-- 原生 Rust 与 `wasm32-wasip2`
+![ASG 生成的终端动画 SVG](https://raw.githubusercontent.com/kingsword09/asg/main/examples/demo.svg)
 
-本项目有意拒绝 v1/v2，避免把 v2 绝对时间错误地当成 v3 增量时间。旧录制可先转换：
+_使用 `--window` 从 [asciinema/agg 的 v3 demo 录制](https://github.com/asciinema/agg/blob/e7b0e3bd597798734a86669d7118eef7799da2ab/demo.cast)生成；[来源与授权说明](examples/README.md)。_
+
+## 为什么选择 ASG？
+
+- **原生解析 asciicast v3。** 正确处理 v3 header、相对事件时间、resize、录制内主题以及 zstd 压缩输入。
+- **适合直接放进 README。** 输出是一个自包含 SVG，不需要 JavaScript、逐帧位图或外部播放器。
+- **缩放仍然清晰。** 像素原生几何、整数文本基线和终端图形 SVG path，避免常见的文字发糊与线段接缝。
+- **两种发行方式，一套 CLI。** 可使用原生 Rust 二进制，也可通过 npm/WASI 在 Node.js 中直接运行。
+
+## 30 秒上手
+
+使用 npm 直接运行：
 
 ```bash
-asciinema convert old.cast recording-v3.cast
+npx --yes @kingsword/asg@latest recording.cast recording.svg --window
 ```
 
-## 构建与使用
+或安装任意一种发行版：
 
 ```bash
-cargo build --release -p asg
+# 原生 Rust 二进制
+cargo install asg --locked
 
-asg recording.cast recording.svg
-asg recording.cast.zst recording.svg
-cat recording.cast | asg - - > recording.svg
-
-# 时间单位为秒
-asg recording.cast still.svg --at 4.5
-asg recording.cast excerpt.svg --from 3 --to 12
-
-asg recording.cast window.svg --window --no-cursor
-```
-
-npm/WASI 版本安装后提供相同命令：
-
-```bash
+# Node.js / WASI CLI
 npm install -g @kingsword/asg
 ```
 
-主要参数：
+两种安装方式都会提供相同的 `asg` 命令：
+
+```bash
+asg recording.cast recording.svg --window
+```
+
+## 应该选择哪个终端渲染工具？
+
+| 工具 | 输出 | asciicast 支持 | 最适合 |
+|---|---|---|---|
+| **ASG** | 动画 SVG | **仅 v3** | 在 GitHub、npm 和技术文档中展示清晰、紧凑的终端动画 |
+| [svg-term-cli](https://github.com/marionebl/svg-term-cli) | 动画 SVG | 旧版录制，不支持 v3 | 已有的 pre-v3 svg-term 工作流 |
+| [agg](https://github.com/asciinema/agg) | 动画 GIF | v1、v2、v3 | 字体无关的栅格结果与更广泛的录制兼容性 |
+| [asciinema player](https://github.com/asciinema/asciinema-player) | 交互式 HTML/JS | v3 | 需要播放控制的交互式网页 |
+
+如果输入是 asciicast v3，而目标位置只能嵌入图片、不能运行 JavaScript，ASG 是最直接的选择。SVG 文本会使用观看设备上的字体；如果更重视所有设备逐像素一致，而不是矢量缩放和文字清晰度，应选择 agg。
+
+## 输入与兼容范围
+
+ASG 支持：
+
+- 本地 `.cast` 与 zstd 压缩的 `.cast.zst`；
+- 通过 `-` 读取 stdin；
+- HTTP(S) URL；
+- asciinema.org 录制 ID；
+- 输出到文件，或通过 `-` 写入 stdout。
+
+终端行为由 asciinema 的 `avt` 虚拟终端实现，包括 16/256/真彩色、文本属性、备用屏、宽字符、光标可见性和终端 resize。
+
+> [!IMPORTANT]
+> ASG 有意只接受 asciicast v3。旧录制需要先转换：
+>
+> ```bash
+> asciinema convert old.cast recording-v3.cast
+> ```
+
+## 常用场景
+
+```bash
+# 本地或压缩录制
+asg recording.cast recording.svg
+asg recording.cast.zst recording.svg
+
+# stdin/stdout
+cat recording.cast | asg - - > recording.svg
+
+# 直接读取远程录制
+asg https://example.com/recording.cast recording.svg --window
+
+# 单个静态画面或动画片段，时间单位为秒
+asg recording.cast still.svg --at 4.5
+asg recording.cast excerpt.svg --from 3 --to 12
+
+# 调整尺寸、倍速并隐藏光标
+asg recording.cast demo.svg --cols 100 --rows 30 --speed 1.5 --no-cursor
+```
+
+重新生成 README 演示：
+
+```bash
+asg examples/demo.cast examples/demo.svg --window --from 0.1
+```
+
+<details>
+<summary><strong>完整参数摘要与内置主题</strong></summary>
 
 ```text
 --speed <N>                  播放倍速
@@ -52,70 +110,49 @@ npm install -g @kingsword/asg
 --idle-time-limit <SECONDS>  覆盖 v3 header 的空闲时间限制
 --cols/--width <N>           固定终端列数
 --rows/--height <N>          固定终端行数
+--font-family <FAMILY>       CSS 字体栈
 --font-size <PX>             输出字号，默认 16
 --line-height <N>            行高倍数，默认 1.4
 --padding[-x|-y] <PX>        输出留白，默认 0
 --theme <NAME|COLORS>        命名主题或 18 色自定义主题
+--at/--from/--to <SECONDS>   静态画面或动画范围
 --no-cursor --no-loop --window
 ```
 
-## 清晰度与输出体积
+内置主题：`svg-term`、`atom-one`、`asciinema`、`dracula`、`github-dark`、`github-light`、`monokai`、`solarized-dark`、`solarized-light`。
 
-默认几何将每个终端边界固定在物理像素网格上：
+以 `asg --help` 的输出作为完整、准确的接口说明。
 
-- 字号 = `16px`
-- 列宽 = `round(字号 × 0.6) = 10px`
-- 行高 = `round(字号 × 1.4) = 22px`
-- 宽度 = `列数 × 10px`，高度 = `行数 × 22px`
-- padding = `0px`
-- 未提供录制主题时使用 svg-term 的 Atom One 配色
+</details>
 
-根与内部 `viewBox` 都和各自物理画布保持 1:1，文本基线、行偏移和帧位移全部是整数，并关闭 kerning/ligature。字体栈参考 agg，优先使用 JetBrains Mono、Fira Code 与 SF Mono，在彩色 emoji 前解析终端符号，并对 agg 会交给符号字体的字符请求 Unicode 文本呈现。常用 box-drawing 与块元素直接编码为清晰 SVG path，不再依赖字体拼接，避免旧版 10 倍缩放、小数像素和线段接缝造成的发糊。
+## 渲染模型与体积
 
-仓库中的实际 108×32 v3 demo 实测：
+ASG 使用紧凑的横向 reel，而不是重复编码完整屏幕：
 
-| 产物 | 字节数 | 画布 |
-|---|---:|---:|
-| v3 cast 输入 | 720,855 | 108×32 cells |
-| 旧版小数几何 SVG | 252,731 | 1080×694.72 |
-| 像素原生 SVG | 290,902 | 1080×704 |
+- 只有真正改变画面的事件才生成帧；
+- 相同状态和重复行会被复用；
+- 文本样式共享 CSS class；
+- 只用一个离散 CSS 动画移动 reel；
+- box-drawing 和 block 字符使用清晰的原生 SVG path。
 
-完整清晰度优化使 SVG 增加约 15.10%，主要来自宽字符按准确终端单元格隔离，以及终端图形脱离字体独立编码；最终文件仍只有 cast 输入的 40.36%。`svg-term-cli` 无法解析该 v3 录制，因此不能直接转换仓库 demo 做同源比较。
+上方演示使用 `--window --from 0.1` 生成：
 
-体积优化没有依赖不可维护的字符串后处理，而是在模型层完成：
+| 输入 | 输出 | 帧数 | 时长 | 画布 |
+|---|---:|---:|---:|---:|
+| 1,744,897 字节 v3 cast | 986,999 字节 SVG | 146 | 29.964 秒 | 930×544 |
 
-- 只为真正改变屏幕的 output/resize 建帧；input/marker/exit 只推进时间
-- 相同视觉状态去重
-- FPS 是“合并时间窗”，不再复制整屏制造固定帧
-- 重复行注册到 `<defs>`，每帧用 `<use>` 引用
-- 文本样式共用 CSS class
-- 所有帧横向排列，仅用一个离散 CSS reel 动画切换
-- SVG 直接紧凑编码，不再生成大量空 `<g>` 和格式化空白
+SVG 体积为 cast 输入的 56.56%，同时保持矢量和自包含。默认终端几何为 16px 字号、10px 单元格宽、22px 行高、1:1 物理像素 `viewBox` 和 0 padding。
 
-SVG 文本仍使用观看设备本地安装的字体。若要求所有设备与 agg 完全逐像素一致，就必须嵌入或栅格化字体，这会显著增加体积；当前实现有意保留矢量、紧凑的输出形式。仓库 demo 已在原生尺寸和 74% 浏览器预览缩放下，与 agg 1.9.0 的同一 10s、60s、100s、120s 画面逐一检查。
+解析器、时间轴、终端和 renderer 的设计见[架构文档](docs/architecture.md)。Rust 库入口为 `asg::generate`。
 
-## 模块边界
-
-- `asciicast.rs`：v3 严格解析与元数据校验
-- `terminal.rs`：`avt` 的最小适配层
-- `timeline.rs`：时间变换、resize、视觉去重、FPS、range/at
-- `renderer.rs`：紧凑 SVG、行/样式注册表、reel 动画
-- `input.rs`：本地/stdin/HTTP、zstd 自动识别、输出
-- `lib.rs`：库级编排和主题优先级
-- `main.rs`：仅负责 CLI
-
-主题优先级为：CLI/API 显式主题 > v3 header 主题 > svg-term 默认主题。
-
-resize 会在事件发生时真实作用于终端并执行重排。由于 SVG 根画布不能在动画中改变固有尺寸，最终画布取录制过程中出现过的最大终端尺寸；`--cols` / `--rows` 可以固定对应轴。
-
-## 验证
+## 开发验证
 
 ```bash
-cargo test --workspace
-cargo clippy --tests --all-features --all-targets --workspace -- -D warnings
+cargo +nightly x lint
+cargo +nightly x test
 cargo build -p asg --target wasm32-wasip2 --release
 ```
 
 ## 许可证
 
-Apache-2.0；`avt` 同样使用 Apache-2.0。
+ASG 源代码使用 Apache-2.0。演示录制及其生成的 SVG 保留上游 demo 资产的 GPL-3.0-or-later 条款，详见 [examples/README.md](examples/README.md)。
