@@ -41,6 +41,10 @@ struct Cli {
     )]
     font_family: String,
 
+    /// Font file to embed in the SVG; TrueType glyphs are subsetted (repeatable)
+    #[arg(long = "font-file")]
+    font_files: Vec<std::path::PathBuf>,
+
     /// Font size in output pixels
     #[arg(long, default_value_t = DEFAULT_FONT_SIZE)]
     font_size: f64,
@@ -122,6 +126,7 @@ fn main() -> Result<()> {
             font_size: cli.font_size,
             line_height: cli.line_height,
             font_family: cli.font_family,
+            font_files: cli.font_files,
             padding_x: cli.padding_x.unwrap_or(cli.padding),
             padding_y: cli.padding_y.unwrap_or(cli.padding),
             window: cli.window,

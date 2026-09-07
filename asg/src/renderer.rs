@@ -19,6 +19,9 @@ pub struct RenderOptions {
     pub font_size: f64,
     pub line_height: f64,
     pub font_family: String,
+    /// Font files to subset and embed as data-URI @font-face rules.
+    /// Requires the `embed-fonts` feature; ignored with a warning otherwise.
+    pub font_files: Vec<std::path::PathBuf>,
     pub padding_x: f64,
     pub padding_y: f64,
     pub window: bool,
@@ -32,6 +35,7 @@ impl Default for RenderOptions {
             font_size: DEFAULT_FONT_SIZE,
             line_height: DEFAULT_LINE_HEIGHT,
             font_family: DEFAULT_FONT_FAMILY.to_owned(),
+            font_files: Vec::new(),
             padding_x: 0.0,
             padding_y: 0.0,
             window: false,
@@ -204,6 +208,8 @@ pub fn render(timeline: &Timeline, options: &RenderOptions) -> Result<String> {
         })
         .collect::<Vec<_>>();
 
+    let embedded_faces = collect_embedded_faces(&rendered_frames, options)?;
+
     let (registry, references) = build_registry(&rendered_frames);
     let styles = collect_styles(&rendered_frames);
     let style_classes = styles
@@ -249,6 +255,7 @@ pub fn render(timeline: &Timeline, options: &RenderOptions) -> Result<String> {
         &style_classes,
         rendered_frames.len(),
         geometry,
+        &embedded_faces,
     )?;
     write!(
         svg,
@@ -358,6 +365,57 @@ fn validate(options: &RenderOptions) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Include rendered text and the space and text-presentation selector used
+/// during output. Characters rendered as paths need no font glyphs.
+#[cfg(feature = "embed-fonts")]
+fn collect_codepoints(frames: &[Vec<RenderedLine>]) -> BTreeSet<char> {
+    let mut codepoints: BTreeSet<char> = frames
+        .iter()
+        .flatten()
+        .flat_map(|line| line.text.iter().flat_map(|run| run.text.chars()))
+        .map(xml_character)
+        .collect();
+    codepoints.insert(' ');
+    codepoints.insert('\u{fe0e}');
+    codepoints
+}
+
+/// Parse, subset, and encode every supplied font file. Warns when an embedded
+/// family is not reachable through the font-family stack, since the browser
+/// would never use the embedded face in that case.
+#[cfg(feature = "embed-fonts")]
+fn collect_embedded_faces(
+    frames: &[Vec<RenderedLine>],
+    options: &RenderOptions,
+) -> Result<Vec<crate::fonts::EmbeddedFace>> {
+    if options.font_files.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let faces = crate::fonts::load_faces(&options.font_files, &collect_codepoints(frames))?;
+    let stack = options.font_family.to_ascii_lowercase();
+    for face in &faces {
+        if !stack.contains(&face.family.to_ascii_lowercase()) {
+            log::warn!(
+                "embedded family '{}' is not listed in --font-family; the browser will never use it",
+                face.family
+            );
+        }
+    }
+    Ok(faces)
+}
+
+#[cfg(not(feature = "embed-fonts"))]
+fn collect_embedded_faces(
+    _frames: &[Vec<RenderedLine>],
+    options: &RenderOptions,
+) -> Result<EmbeddedFaces> {
+    if !options.font_files.is_empty() {
+        log::warn!("--font-file requires the `embed-fonts` feature; ignoring font files");
+    }
+    Ok(Vec::new())
 }
 
 fn snap_pixel(value: f64, name: &str, allow_zero: bool) -> Result<usize> {
@@ -661,6 +719,13 @@ fn build_registry(
     (registry, references)
 }
 
+/// A face ready to embed, or a no-op placeholder when font embedding is
+/// compiled out.
+#[cfg(feature = "embed-fonts")]
+type EmbeddedFaces = Vec<crate::fonts::EmbeddedFace>;
+#[cfg(not(feature = "embed-fonts"))]
+type EmbeddedFaces = Vec<std::convert::Infallible>;
+
 fn write_styles(
     output: &mut String,
     timeline: &Timeline,
@@ -668,8 +733,13 @@ fn write_styles(
     classes: &BTreeMap<TextStyle, String>,
     frame_count: usize,
     geometry: Geometry,
+    embedded_faces: &EmbeddedFaces,
 ) -> std::fmt::Result {
     output.push_str("<style>");
+    #[cfg(feature = "embed-fonts")]
+    crate::fonts::write_font_faces(output, embedded_faces)?;
+    #[cfg(not(feature = "embed-fonts"))]
+    let _ = embedded_faces;
     if classes.keys().any(|style| style.blink) {
         output.push_str("@keyframes k{50%{opacity:0}}");
     }
@@ -907,23 +977,30 @@ fn escape_attribute(value: &str) -> String {
     escape_xml(value, true, false)
 }
 
+fn xml_character(ch: char) -> char {
+    match ch {
+        '\u{9}'
+        | '\u{a}'
+        | '\u{d}'
+        | '\u{20}'..='\u{d7ff}'
+        | '\u{e000}'..='\u{fffd}'
+        | '\u{10000}'..='\u{10ffff}' => ch,
+        _ => '\u{fffd}',
+    }
+}
+
 fn escape_xml(value: &str, attribute: bool, prefer_text_symbols: bool) -> String {
     let mut output = String::with_capacity(value.len());
     let mut chars = value.chars().peekable();
     while let Some(ch) = chars.next() {
+        let ch = xml_character(ch);
         match ch {
             '&' => output.push_str("&amp;"),
             '<' => output.push_str("&lt;"),
             '>' => output.push_str("&gt;"),
             '"' if attribute => output.push_str("&quot;"),
             '\'' if attribute => output.push_str("&apos;"),
-            '\u{9}'
-            | '\u{a}'
-            | '\u{d}'
-            | '\u{20}'..='\u{d7ff}'
-            | '\u{e000}'..='\u{fffd}'
-            | '\u{10000}'..='\u{10ffff}' => output.push(ch),
-            _ => output.push('\u{fffd}'),
+            _ => output.push(ch),
         }
         if prefer_text_symbols
             && prefers_text_presentation(ch)
@@ -1252,5 +1329,110 @@ mod tests {
         let svg = render(&timeline(&events, 120, 8), &RenderOptions::default()).unwrap();
 
         assert!(svg.len() < 100_000, "unexpected SVG size: {}", svg.len());
+    }
+
+    #[cfg(feature = "embed-fonts")]
+    mod embed_fonts {
+        use super::*;
+
+        #[test]
+        fn collects_text_glyphs_across_frames_without_path_only_graphics() {
+            let timeline = timeline(
+                "[0,\"o\",\"A╔─\\u001b[3m│\\u001b[0m\\ufffe\"]\n[1,\"o\",\"\\u001b[2J\\u001b[HZ\"]\n",
+                16,
+                1,
+            );
+            let frames = timeline
+                .frames
+                .iter()
+                .map(|frame| {
+                    frame
+                        .snapshot
+                        .lines
+                        .iter()
+                        .map(|line| render_line(line, timeline.cols, &Theme::default()))
+                        .collect()
+                })
+                .collect::<Vec<_>>();
+
+            assert_eq!(
+                collect_codepoints(&frames),
+                BTreeSet::from([' ', 'A', 'Z', '╔', '│', '\u{fe0e}', '\u{fffd}'])
+            );
+        }
+
+        fn font_files() -> Vec<std::path::PathBuf> {
+            let font_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts");
+            vec![
+                font_dir.join("AsgTestSans-Regular.ttf"),
+                font_dir.join("AsgTestSans-Bold.ttf"),
+            ]
+        }
+
+        fn first_subset(svg: &str) -> Vec<u8> {
+            use base64::Engine as _;
+            use base64::engine::general_purpose::STANDARD;
+            let start = svg.find("base64,").expect("no base64 data") + "base64,".len();
+            let end = svg[start..].find(')').expect("unterminated url") + start;
+            STANDARD.decode(&svg[start..end]).unwrap()
+        }
+
+        #[test]
+        fn embeds_font_faces_for_used_codepoints() {
+            let options = RenderOptions {
+                font_family: "'Asg Test Sans',monospace".to_owned(),
+                font_files: font_files(),
+                ..RenderOptions::default()
+            };
+            let svg = render(
+                &timeline(
+                    "[0,\"o\",\"A\"]\n[1,\"o\",\"\\u001b[1mB\\u001b[0m\"]\n",
+                    10,
+                    2,
+                ),
+                &options,
+            )
+            .unwrap();
+
+            assert_eq!(svg.matches("@font-face{").count(), 2);
+            assert!(svg.contains("font-family:'Asg Test Sans';font-style:normal;font-weight:400;"));
+            assert!(svg.contains("font-style:normal;font-weight:700;"));
+            assert!(svg.contains("format('woff2')}"));
+            assert_eq!(&first_subset(&svg)[..4], b"wOF2");
+        }
+
+        #[test]
+        fn missing_font_file_fails_the_render() {
+            let options = RenderOptions {
+                font_family: "'Asg Test Sans',monospace".to_owned(),
+                font_files: vec!["/nonexistent/font.ttf".into()],
+                ..RenderOptions::default()
+            };
+            assert!(render(&timeline("[0,\"o\",\"A\"]\n", 10, 2), &options).is_err());
+        }
+
+        #[test]
+        fn without_font_files_no_font_faces_are_emitted() {
+            let svg = render(
+                &timeline("[0,\"o\",\"A\"]\n", 10, 2),
+                &RenderOptions::default(),
+            )
+            .unwrap();
+
+            assert!(!svg.contains("@font-face"));
+        }
+
+        #[test]
+        fn subset_is_smaller_than_the_source_font() {
+            let options = RenderOptions {
+                font_family: "'Asg Test Sans',monospace".to_owned(),
+                font_files: font_files(),
+                ..RenderOptions::default()
+            };
+            let svg = render(&timeline("[0,\"o\",\"A\"]\n", 10, 2), &options).unwrap();
+
+            let source = std::fs::read(&font_files()[0]).unwrap();
+            assert!(first_subset(&svg).len() < source.len() / 2);
+        }
     }
 }

@@ -1,4 +1,6 @@
 pub mod asciicast;
+#[cfg(feature = "embed-fonts")]
+pub mod fonts;
 pub mod input;
 pub mod renderer;
 pub mod terminal;

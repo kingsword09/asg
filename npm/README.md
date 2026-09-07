@@ -77,6 +77,7 @@ Useful options:
 --cols/--width <N>           pin terminal columns
 --rows/--height <N>          pin terminal rows
 --font-family <FAMILY>       CSS font stack
+--font-file <PATH>           embed a local font (repeatable)
 --font-size <PX>             output font size
 --line-height <N>            line-height multiplier
 --padding[-x|-y] <PX>        output padding
@@ -86,6 +87,13 @@ Useful options:
 ```
 
 Run `asg --help` for the full interface.
+
+Use `--font-file fonts/Regular.ttf --font-family "Your Font,monospace"` to embed a
+font without requiring it on the viewer's machine. Supply matching bold and italic
+faces when needed. TrueType fonts are subsetted to the output's characters and
+compressed to WOFF2; CFF/CFF2 fonts use complete OpenType data and may add
+substantially more data. Bitmap emoji fonts are rejected. Check the font's
+embedding license before using it.
 
 ## Why SVG?
 
