@@ -144,6 +144,8 @@ asg examples/demo.cast examples/demo.svg --window --from 0.1
 --theme <NAME|COLORS>        named theme or custom 18-color palette
 --at/--from/--to <SECONDS>   static frame or animated range
 --no-cursor --no-loop --window
+--no-synthetic-symbols       render block and box-drawing characters with
+                             the font instead of crisp SVG paths
 ```
 
 Built-in themes: `svg-term`, `atom-one`, `asciinema`, `dracula`, `github-dark`, `github-light`, `monokai`, `solarized-dark`, and `solarized-light`.
@@ -160,7 +162,7 @@ ASG uses a compact horizontal reel instead of duplicating complete screens:
 - identical states and repeated lines are reused;
 - styles are shared through CSS classes;
 - one discrete CSS animation moves the reel;
-- box-drawing and block glyphs use crisp native SVG paths.
+- box-drawing and block glyphs use crisp native SVG paths (opt out with `--no-synthetic-symbols`).
 
 The demo above was generated with `--window --from 0.1`:
 

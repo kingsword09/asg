@@ -178,7 +178,7 @@ content_height  = rows × row_px
 
 浏览器可能在首个可用正文字体缺少符号时直接跳到彩色 emoji，而 agg 会先尝试内置 Symbols Nerd Font。renderer 因此把系统 symbol family 放在 emoji family 前，并对 Unicode 16.0 同时具有 text/emoji 标准变体、默认呈现为 emoji 的字符补充 VS15（显式 VS16 会原样保留）。这样 `⚡`、时钟等终端状态符号与 agg 一样优先单色显示，真正的彩色 emoji 仍可回退到系统 emoji 字体。
 
-清晰度改造时使用的基准录制高频包含 `─│┌┐└┘├┤┬┴┼` 与 `█▀▄`。这些字符不再作为相邻字体 glyph 输出，而是转换为按单元格合并的 SVG path；同一行同一样式只使用一个 path，既消除缩放后的线段接缝，也控制额外体积。
+清晰度改造时使用的基准录制高频包含 `─│┌┐└┘├┤┬┴┼` 与 `█▀▄`。这些字符不再作为相邻字体 glyph 输出，而是转换为按单元格合并的 SVG path；同一行同一样式只使用一个 path，既消除缩放后的线段接缝，也控制额外体积。若希望这些字符保持所选字体的字形（例如使用定制 display 字体时），可用 `--no-synthetic-symbols` 关闭该合成行为，让其回退为普通文本输出；此时需保证观看端（或通过 `--font-file` 内嵌）的字体确实包含这些字形。
 
 该策略能保留矢量 SVG 的紧凑性并显著改善常见浏览器的清晰度，但不会承诺跨设备逐像素一致：本地字体缺失时浏览器仍会使用 fallback。可通过 `--font-file`（可重复）以 data-URI `@font-face` 内嵌字体，避免依赖观看端安装字体。TrueType 轮廓通过 skera 子集化，保留 cmap 与 GSUB 闭包，再编码为 WOFF2；当前子集和 WOFF2 编码库不支持 CFF/CFF2 轮廓，因此这类字体以完整 OpenType 数据内嵌并告警体积影响。该功能位于默认开启的 `embed-fonts` cargo feature 之后，关闭后二进制体积更小。彩色 emoji 位图字体（SBIX/CBDT）会被拒绝。
 

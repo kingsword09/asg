@@ -143,6 +143,8 @@ asg examples/demo.cast examples/demo.svg --window --from 0.1
 --theme <NAME|COLORS>        命名主题或 18 色自定义主题
 --at/--from/--to <SECONDS>   静态画面或动画范围
 --no-cursor --no-loop --window
+--no-synthetic-symbols       block 与 box-drawing 字符改用字体字形渲染，
+                             而不是合成 SVG path
 ```
 
 内置主题：`svg-term`、`atom-one`、`asciinema`、`dracula`、`github-dark`、`github-light`、`monokai`、`solarized-dark`、`solarized-light`。
@@ -159,7 +161,7 @@ ASG 使用紧凑的横向 reel，而不是重复编码完整屏幕：
 - 相同状态和重复行会被复用；
 - 文本样式共享 CSS class；
 - 只用一个离散 CSS 动画移动 reel；
-- box-drawing 和 block 字符使用清晰的原生 SVG path。
+- box-drawing 和 block 字符使用清晰的原生 SVG path（可用 `--no-synthetic-symbols` 关闭）。
 
 上方演示使用 `--window --from 0.1` 生成：
 

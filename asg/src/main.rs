@@ -85,6 +85,10 @@ struct Cli {
     #[arg(long)]
     no_loop: bool,
 
+    /// Render block and box-drawing characters with the font instead of paths
+    #[arg(long)]
+    no_synthetic_symbols: bool,
+
     /// Add svg-term compatible macOS-style window decorations
     #[arg(long)]
     window: bool,
@@ -131,6 +135,7 @@ fn main() -> Result<()> {
             padding_y: cli.padding_y.unwrap_or(cli.padding),
             window: cli.window,
             loop_animation: !cli.no_loop,
+            synthetic_symbols: !cli.no_synthetic_symbols,
             ..RenderOptions::default()
         },
         theme: cli.theme,
@@ -197,5 +202,14 @@ mod tests {
         assert_eq!(cli.line_height, DEFAULT_LINE_HEIGHT);
         assert_eq!(cli.font_family, DEFAULT_FONT_FAMILY);
         assert_eq!(cli.padding, 0.0);
+        assert!(!cli.no_synthetic_symbols);
+    }
+
+    #[test]
+    fn no_synthetic_symbols_flag_disables_synthetic_geometry() {
+        let cli =
+            Cli::try_parse_from(["asg", "in.cast", "out.svg", "--no-synthetic-symbols"]).unwrap();
+
+        assert!(cli.no_synthetic_symbols);
     }
 }
