@@ -26,6 +26,9 @@ pub struct RenderOptions {
     pub padding_y: f64,
     pub window: bool,
     pub loop_animation: bool,
+    /// Draw box-drawing and block elements as crisp cell-aligned SVG paths.
+    /// Set to false to render those characters with the font's own glyphs.
+    pub synthetic_symbols: bool,
     pub theme: Theme,
 }
 
@@ -40,6 +43,7 @@ impl Default for RenderOptions {
             padding_y: 0.0,
             window: false,
             loop_animation: true,
+            synthetic_symbols: true,
             theme: Theme::default(),
         }
     }
@@ -203,7 +207,14 @@ pub fn render(timeline: &Timeline, options: &RenderOptions) -> Result<String> {
                 .lines
                 .iter()
                 .take(timeline.rows)
-                .map(|line| render_line(line, timeline.cols, &options.theme))
+                .map(|line| {
+                    render_line(
+                        line,
+                        timeline.cols,
+                        &options.theme,
+                        options.synthetic_symbols,
+                    )
+                })
                 .collect::<Vec<_>>()
         })
         .collect::<Vec<_>>();
@@ -428,12 +439,16 @@ fn snap_pixel(value: f64, name: &str, allow_zero: bool) -> Result<usize> {
     Ok(if allow_zero { pixels } else { pixels.max(1) })
 }
 
-fn render_line(line: &Line, cols: usize, theme: &Theme) -> RenderedLine {
+fn render_line(line: &Line, cols: usize, theme: &Theme, synthetic_symbols: bool) -> RenderedLine {
     let cells = &line.cells()[..line.cells().len().min(cols)];
     RenderedLine {
         backgrounds: background_runs(cells, theme),
-        graphics: graphic_runs(cells, theme),
-        text: text_runs(cells, theme),
+        graphics: if synthetic_symbols {
+            graphic_runs(cells, theme)
+        } else {
+            Vec::new()
+        },
+        text: text_runs(cells, theme, synthetic_symbols),
     }
 }
 
@@ -568,7 +583,7 @@ fn graphic_kind(ch: char) -> Option<GraphicKind> {
     })
 }
 
-fn text_runs(cells: &[Cell], theme: &Theme) -> Vec<TextRun> {
+fn text_runs(cells: &[Cell], theme: &Theme, synthetic_symbols: bool) -> Vec<TextRun> {
     struct Pending {
         col: usize,
         end: usize,
@@ -603,7 +618,8 @@ fn text_runs(cells: &[Cell], theme: &Theme) -> Vec<TextRun> {
         }
         let style = style(cell.pen(), theme);
 
-        if graphic_kind(cell.char()).is_some() && supports_graphic_style(style) {
+        if synthetic_symbols && graphic_kind(cell.char()).is_some() && supports_graphic_style(style)
+        {
             flush(&mut output, pending.take());
             continue;
         }
@@ -1210,6 +1226,29 @@ mod tests {
     }
 
     #[test]
+    fn no_synthetic_symbols_renders_graphics_with_the_font() {
+        let svg = render(
+            &timeline("[0,\"o\",\"┌─┐\\r\\n│█▀▄│\\r\\n└─┘\"]\n", 5, 3),
+            &RenderOptions {
+                synthetic_symbols: false,
+                ..RenderOptions::default()
+            },
+        )
+        .unwrap();
+
+        assert_eq!(svg.matches("<path ").count(), 0);
+        assert!(svg.contains(">┌─┐</text>"));
+        assert!(svg.contains(">│█▀▄│</text>"));
+        assert!(svg.contains(">└─┘</text>"));
+    }
+
+    #[test]
+    fn synthetic_symbols_default_stays_enabled() {
+        let options = RenderOptions::default();
+        assert!(options.synthetic_symbols);
+    }
+
+    #[test]
     fn derives_pixel_geometry_from_a_custom_font_size() {
         let svg = render(
             &timeline("[0,\"o\",\"A\"]\n", 10, 3),
@@ -1350,7 +1389,7 @@ mod tests {
                         .snapshot
                         .lines
                         .iter()
-                        .map(|line| render_line(line, timeline.cols, &Theme::default()))
+                        .map(|line| render_line(line, timeline.cols, &Theme::default(), true))
                         .collect()
                 })
                 .collect::<Vec<_>>();
