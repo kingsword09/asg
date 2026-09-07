@@ -65,6 +65,20 @@ npx skills add kingsword09/asg --skill asg
 
 如果输入是 asciicast v3，而目标位置只能嵌入图片、不能运行 JavaScript，ASG 是最直接的选择。SVG 文本会使用观看设备上的字体；如果更重视所有设备逐像素一致，而不是矢量缩放和文字清晰度，应选择 agg。
 
+### 内嵌字体
+
+默认情况下 SVG 只声明字体名称。传入 `--font-file`（可重复）后，ASG 会以 data-URI `@font-face` 的形式把本地 TrueType 或 OpenType 字体内嵌进 SVG。TrueType 轮廓会裁剪为输出实际用到的字形并压缩成 WOFF2；CFF/CFF2 字体会以完整 OpenType 数据内嵌，并提示体积影响。支持 SVG 的浏览器无需安装这些字体即可使用，包括 GitHub README 中以图片显示的 SVG：
+
+```bash
+asg demo.cast demo.svg \
+  --font-family "JetBrains Mono,Symbols Nerd Font Mono" \
+  --font-file JetBrainsMono-Regular.ttf \
+  --font-file JetBrainsMono-Bold.ttf \
+  --font-file SymbolsNerdFontMono-Regular.ttf
+```
+
+字体族、样式和字重从每个 face 的 `name`/`OS/2` 表读取，`--font-family` 字体栈继续决定选择顺序（内嵌字族不在栈中时 ASG 会告警）。渲染器禁用了 `font-synthesis`，录制中若使用了粗体或斜体，需要提供对应的 face。位图 emoji 字体（SBIX/CBDT）会被拒绝，请不传入这些字体，让观看端使用系统 emoji 兜底。增加的体积取决于字形覆盖范围和字体格式，完整 CFF 字体可能远大于 TrueType 子集。请确认每个字体的许可证允许内嵌。
+
 ## 输入与兼容范围
 
 ASG 支持：
@@ -122,6 +136,8 @@ asg examples/demo.cast examples/demo.svg --window --from 0.1
 --rows/--height <N>          固定终端行数
 --font-family <FAMILY>       CSS 字体栈
 --font-size <PX>             输出字号，默认 16
+--font-file <PATH>           以 data-URI @font-face 内嵌的字体文件
+                             （可重复；例如常规体、粗体和 Nerd Font 兜底）
 --line-height <N>            行高倍数，默认 1.4
 --padding[-x|-y] <PX>        输出留白，默认 0
 --theme <NAME|COLORS>        命名主题或 18 色自定义主题

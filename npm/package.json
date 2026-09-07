@@ -18,7 +18,8 @@
   "scripts": {
     "prebuild": "cargo build --manifest-path ../Cargo.toml -p asg --target wasm32-wasip2 --release",
     "build": "jco transpile ../target/wasm32-wasip2/release/asg.wasm -o . --instantiation=async",
-    "start": "node bin/asg.mjs"
+    "start": "node bin/asg.mjs",
+    "test": "node --test test/*.test.mjs"
   },
   "keywords": [
     "asciinema",
@@ -36,6 +37,7 @@
     "asg.core*.wasm",
     "interfaces/*.d.ts",
     "bin/asg.mjs",
+    "bin/args.mjs",
     "README.md",
     "LICENSE"
   ],

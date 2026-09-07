@@ -27,6 +27,8 @@ jobs:
           tool: typos-cli,taplo-cli
       - run: cargo +nightly x lint
       - run: cargo +nightly x test
+      - run: cargo +nightly test -p asg --no-default-features --locked
+      - run: npm test --prefix npm
       - run: cargo +nightly build -p asg --target wasm32-wasip2 --release
 
   publish:
@@ -88,11 +90,14 @@ jobs:
         run: |
           npm ci
           npm run build
-      - name: Smoke test npm CLI filesystem
+      - name: Smoke test npm CLI filesystem and embedded fonts
         working-directory: npm
         run: |
           OUTPUT="$RUNNER_TEMP/asg-smoke.svg"
-          node bin/asg.mjs ../examples/demo.cast "$OUTPUT" --window
+          node bin/asg.mjs ../examples/demo.cast "$OUTPUT" --window \
+            --font-family "Asg Test Sans,monospace" \
+            --font-file ../asg/tests/fonts/AsgTestSans-Regular.ttf \
+            --font-file=../asg/tests/fonts/AsgTestSans-Bold.ttf
           test -s "$OUTPUT"
       - uses: rust-lang/crates-io-auth-action@v1
         id: auth

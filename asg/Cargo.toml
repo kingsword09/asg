@@ -13,6 +13,12 @@ readme.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+[features]
+default = ["embed-fonts"]
+# Subset and embed user-supplied font files into the SVG as data-URI
+# @font-face rules. Off keeps the binary small for size-sensitive embedders.
+embed-fonts = ["dep:base64", "dep:skera", "dep:skrifa", "dep:ttf2woff2"]
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
@@ -20,12 +26,18 @@ rustdoc-args = ["--cfg", "docsrs"]
 [dependencies]
 anyhow = "1.0"
 avt = "0.18"
+base64 = { version = "0.22", optional = true }
 clap = { workspace = true, features = ["derive"] }
 env_logger = "0.11"
 log = "0.4"
 ruzstd = "0.7.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+skera = { version = "=0.6.0", optional = true }
+skrifa = { version = "0.46", optional = true, default-features = false, features = [
+  "std",
+] }
+ttf2woff2 = { version = "0.13", optional = true }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 reqwest = { version = "0.12", default-features = false, features = [

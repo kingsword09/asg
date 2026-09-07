@@ -2,7 +2,7 @@
 
 import { WASIShim } from "@bytecodealliance/preview2-shim/instantiation";
 import { cli as cliShim } from "@bytecodealliance/preview2-shim";
-import path from "node:path";
+import { wasiArgs } from "./args.mjs";
 
 import { instantiate } from "../asg.js";
 
@@ -16,18 +16,7 @@ async function main() {
                 environment: {
                     ...cliShim.environment,
                     getArguments() {
-                        const args = ["asg"];
-                        for (const p of process.argv.slice(2)) {
-                            const isUrl = p.startsWith("http://") || p.startsWith("https://");
-                            const isPath = p.endsWith(".cast") || p.endsWith(".cast.zst") || p.endsWith(".svg");
-                            if (!isUrl && isPath) {
-                                args.push(path.resolve(process.cwd(), p));
-                                continue;
-                            }
-
-                            args.push(p);
-                        }
-                        return args;
+                        return wasiArgs(process.argv.slice(2), process.cwd());
                     },
                 },
             },

@@ -65,6 +65,20 @@ Use `-g -y` for a non-interactive global install, then ask your agent to `Use $a
 
 Choose ASG when the source is asciicast v3 and the destination accepts an image but not a JavaScript player. SVG text uses fonts installed on the viewer's system; choose agg when identical rasterized pixels across devices matter more than vector scaling and text sharpness.
 
+### Embedding fonts
+
+By default the SVG only names fonts. Pass `--font-file` (repeatable) to embed local TrueType or OpenType faces as data-URI `@font-face` rules. TrueType outlines are subsetted to the codepoints the output actually uses and compressed to WOFF2; CFF/CFF2 fonts are embedded as complete OpenType data with a size warning. This lets SVG-capable browsers use those fonts without a local installation, including when the SVG is displayed as an image in a GitHub README:
+
+```bash
+asg demo.cast demo.svg \
+  --font-family "JetBrains Mono,Symbols Nerd Font Mono" \
+  --font-file JetBrainsMono-Regular.ttf \
+  --font-file JetBrainsMono-Bold.ttf \
+  --font-file SymbolsNerdFontMono-Regular.ttf
+```
+
+Family, style, and weight are read from each face's `name`/`OS/2` tables, and the `--font-family` stack keeps choosing their order (ASG warns when an embedded family is missing from the stack). The renderer disables `font-synthesis`, so a recording that uses bold or italic needs the matching faces supplied. Bitmap emoji fonts (SBIX/CBDT) are rejected; leave them out to use the viewer's system emoji fallback. Added size depends on glyph coverage and font format; complete CFF fonts can be much larger than TrueType subsets. Confirm that each font's license permits embedding.
+
 ## Inputs and compatibility
 
 ASG accepts:
@@ -122,6 +136,9 @@ asg examples/demo.cast examples/demo.svg --window --from 0.1
 --rows/--height <N>          pin terminal rows
 --font-family <FAMILY>       CSS font stack
 --font-size <PX>             output font size (default 16)
+--font-file <PATH>           font file to embed as a data-URI
+                             @font-face (repeatable; e.g. regular, bold, and
+                             a Nerd Font fallback)
 --line-height <N>            line-height multiplier (default 1.4)
 --padding[-x|-y] <PX>        output padding (default 0)
 --theme <NAME|COLORS>        named theme or custom 18-color palette
