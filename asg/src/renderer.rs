@@ -56,6 +56,7 @@ impl Default for RenderOptions {
 #[derive(Debug, Clone, Copy)]
 struct Geometry {
     font_size: usize,
+    advance_ratio: f64,
     cell_width: usize,
     row_height: usize,
     content_width: usize,
@@ -64,10 +65,47 @@ struct Geometry {
     padding_y: usize,
 }
 
+/// Measure the cell width from the supplied font files before layout. The
+/// first face reporting a usable advance wins, matching the CSS font stack
+/// where the first supplied face is the primary text face.
+#[cfg(feature = "embed-fonts")]
+fn measure_advance_ratio(options: &RenderOptions) -> Option<f64> {
+    for path in &options.font_files {
+        let Ok(data) = std::fs::read(path) else {
+            // A missing or unreadable file keeps failing the render later,
+            // when collect_embedded_faces loads it for embedding.
+            continue;
+        };
+        match crate::fonts::advance_ratio(&data) {
+            Ok(Some(ratio)) => return Some(ratio),
+            Ok(None) => log::warn!(
+                "cannot measure an advance from {}; falling back to the next font",
+                path.display()
+            ),
+            Err(error) => log::warn!("cannot measure an advance from {}: {error}", path.display()),
+        }
+    }
+    None
+}
+
+#[cfg(not(feature = "embed-fonts"))]
+fn measure_advance_ratio(_options: &RenderOptions) -> Option<f64> {
+    None
+}
+
 impl Geometry {
-    fn new(timeline: &Timeline, options: &RenderOptions) -> Result<Self> {
+    fn new(
+        timeline: &Timeline,
+        options: &RenderOptions,
+        advance_ratio: Option<f64>,
+    ) -> Result<Self> {
         let font_size = snap_pixel(options.font_size, "font size", false)?;
-        let cell_width = ((font_size as f64 * MONOSPACE_WIDTH_RATIO).round() as usize).max(1);
+        // A measured advance reproduces the primary face's metrics exactly on
+        // every viewer; 0.6em keeps the classic svg-term geometry otherwise.
+        let ratio = advance_ratio
+            .unwrap_or(MONOSPACE_WIDTH_RATIO)
+            .clamp(0.0, 1.0);
+        let cell_width = ((font_size as f64 * ratio).round() as usize).max(1);
         let row_height = ((font_size as f64 * options.line_height).round() as usize).max(1);
         let content_width = timeline
             .cols
@@ -80,6 +118,7 @@ impl Geometry {
 
         Ok(Self {
             font_size,
+            advance_ratio: ratio,
             cell_width,
             row_height,
             content_width,
@@ -90,7 +129,8 @@ impl Geometry {
     }
 
     fn letter_spacing(self) -> f64 {
-        self.cell_width as f64 - self.font_size as f64 * MONOSPACE_WIDTH_RATIO
+        // Bridge the font's fractional-pixel advance to the integer cell grid.
+        self.cell_width as f64 - self.font_size as f64 * self.advance_ratio
     }
 }
 
@@ -238,7 +278,8 @@ pub fn render(timeline: &Timeline, options: &RenderOptions) -> Result<String> {
         bail!("timeline must contain at least one frame");
     }
 
-    let geometry = Geometry::new(timeline, options)?;
+    let advance_ratio = measure_advance_ratio(options);
+    let geometry = Geometry::new(timeline, options, advance_ratio)?;
 
     let (width, height, content_x, content_y, radius) = if options.window {
         (
@@ -2614,6 +2655,81 @@ mod tests {
 
             let source = std::fs::read(&font_files()[0]).unwrap();
             assert!(first_subset(&svg).len() < source.len() / 2);
+        }
+
+        #[test]
+        fn cell_width_is_measured_from_the_supplied_font_advance() {
+            // 16px font at the fixture's measured 0.6em advance keeps the
+            // classic 10px cell; a 0.55em face shrinks the cell to 9px.
+            for (font, family, cell_width) in [
+                ("AsgTestSans-Regular.ttf", "Asg Test Sans", 10),
+                ("AsgTestNarrow-Regular.ttf", "Asg Test Narrow", 9),
+            ] {
+                let options = RenderOptions {
+                    font_family: format!("'{family}',monospace"),
+                    font_files: vec![font_dir().join(font)],
+                    ..RenderOptions::default()
+                };
+                let svg = render(&timeline("[0,\"o\",\"A\"]\n", 10, 2), &options).unwrap();
+                let document = roxmltree::Document::parse(&svg).unwrap();
+
+                assert_eq!(
+                    document.root_element().attribute("width"),
+                    Some((cell_width * 10).to_string().as_str()),
+                    "{font} should derive a {cell_width}px cell"
+                );
+                assert!(
+                    svg.contains(&format!("width=\"{}\"", cell_width * 10)),
+                    "{font} should size the content viewport at {cell_width}px cells"
+                );
+            }
+        }
+
+        #[test]
+        fn measured_advance_survives_a_20px_font_size() {
+            let options = RenderOptions {
+                font_family: "'Asg Test Narrow',monospace".to_owned(),
+                font_files: vec![font_dir().join("AsgTestNarrow-Regular.ttf")],
+                font_size: 20.0,
+                ..RenderOptions::default()
+            };
+            let svg = render(&timeline("[0,\"o\",\"A\"]\n", 10, 2), &options).unwrap();
+
+            // round(20 * 0.55) = 11, rows * row_height = 2 * round(20 * 1.4) = 56
+            assert!(svg.contains("width=\"110\""));
+            assert!(svg.contains("<rect width=\"11\" height=\"28\""));
+        }
+
+        #[test]
+        fn letter_spacing_compensates_the_measured_advance_rounding() {
+            // 0.55em at 16px is an 8.8px advance; the 9px cell needs a 0.2px
+            // letter-spacing correction so the viewer lands on the cell grid.
+            let options = RenderOptions {
+                font_family: "'Asg Test Narrow',monospace".to_owned(),
+                font_files: vec![font_dir().join("AsgTestNarrow-Regular.ttf")],
+                ..RenderOptions::default()
+            };
+            let svg = render(&timeline("[0,\"o\",\"A\"]\n", 10, 2), &options).unwrap();
+
+            assert!(svg.contains("letter-spacing:0.2px"));
+        }
+
+        #[test]
+        fn unreadable_advance_measures_fall_back_to_the_06em_geometry() {
+            // A font file that measures no advance (here: no space glyph map)
+            // must not change the classic 0.6em geometry.
+            let options = RenderOptions {
+                font_family: "'Asg Test Sans',monospace".to_owned(),
+                font_files: vec![font_dir().join("AsgTestSerif-Regular.otf")],
+                ..RenderOptions::default()
+            };
+            let svg = render(&timeline("[0,\"o\",\"A\"]\n", 10, 2), &options).unwrap();
+
+            assert!(svg.contains("width=\"100\""));
+        }
+
+        fn font_dir() -> std::path::PathBuf {
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts")
         }
     }
 }

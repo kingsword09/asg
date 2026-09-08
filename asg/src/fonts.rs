@@ -12,6 +12,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result, bail};
 use base64::Engine as _;
+use skrifa::raw::TableProvider as _;
 use skrifa::raw::collections::int_set::IntSet;
 use skrifa::raw::types::{NameId, Tag};
 use skrifa::{FontRef, MetadataProvider};
@@ -24,6 +25,31 @@ pub struct EmbeddedFace {
     pub weight: u16,
     pub format: &'static str,
     pub data_uri: String,
+}
+
+/// Measure a face's monospace advance as a fraction of the em (`advance/upem`),
+/// used to derive the SVG cell width. Returns the advance of the space glyph;
+/// a monospace font renders every glyph on that width. `None` when the face
+/// maps no usable space, or the advance is not positive.
+pub fn advance_ratio(data: &[u8]) -> Result<Option<f64>> {
+    let font = FontRef::new(data)?;
+    let metrics = font.glyph_metrics(
+        skrifa::instance::Size::unscaled(),
+        skrifa::instance::LocationRef::default(),
+    );
+    let Some(glyph) = font.charmap().map(' ') else {
+        return Ok(None);
+    };
+    let Some(advance) = metrics.advance_width(glyph) else {
+        return Ok(None);
+    };
+    let Some(upem) = font.head().ok().map(|head| head.units_per_em()) else {
+        return Ok(None);
+    };
+    if advance <= 0.0 || upem == 0 {
+        return Ok(None);
+    }
+    Ok(Some(f64::from(advance) / f64::from(upem)))
 }
 
 /// Parse a font file and extract the CSS-relevant face metadata.
@@ -184,6 +210,7 @@ mod tests {
     const SANS_BOLD: &[u8] = include_bytes!("../tests/fonts/AsgTestSans-Bold.ttf");
     const SERIF_REGULAR: &[u8] = include_bytes!("../tests/fonts/AsgTestSerif-Regular.otf");
     const LAYOUT_REGULAR: &[u8] = include_bytes!("../tests/fonts/AsgTestLayout-Regular.ttf");
+    const NARROW_REGULAR: &[u8] = include_bytes!("../tests/fonts/AsgTestNarrow-Regular.ttf");
 
     #[test]
     fn reads_family_style_and_weight_from_ttf() {
@@ -200,6 +227,18 @@ mod tests {
     #[test]
     fn rejects_non_font_data() {
         assert!(parse_face(b"not a font").is_err());
+    }
+
+    #[test]
+    fn measures_the_advance_ratio_of_test_faces() {
+        assert_eq!(advance_ratio(SANS_REGULAR).unwrap(), Some(0.6));
+        assert_eq!(advance_ratio(SANS_BOLD).unwrap(), Some(0.6));
+        assert_eq!(advance_ratio(NARROW_REGULAR).unwrap(), Some(0.55));
+    }
+
+    #[test]
+    fn advance_measurement_rejects_non_font_data() {
+        assert!(advance_ratio(b"not a font").is_err());
     }
 
     #[test]

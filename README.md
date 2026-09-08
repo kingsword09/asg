@@ -79,6 +79,8 @@ asg demo.cast demo.svg \
 
 Family, style, and weight are read from each face's `name`/`OS/2` tables, and the `--font-family` stack keeps choosing their order (ASG warns when an embedded family is missing from the stack). The renderer disables `font-synthesis`, so a recording that uses bold or italic needs the matching faces supplied. Bitmap emoji fonts (SBIX/CBDT) are rejected; leave them out to use the viewer's system emoji fallback. Added size depends on glyph coverage and font format; complete CFF fonts can be much larger than TrueType subsets. Confirm that each font's license permits embedding.
 
+The cell width is measured from the first supplied font's advance rather than assumed: any monospace face works, not just 0.6 em ones like JetBrains Mono or Fira Code. When no font file is supplied (or the advance cannot be measured), ASG falls back to the classic 0.6 em cell.
+
 ## Inputs and compatibility
 
 ASG accepts:

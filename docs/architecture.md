@@ -174,6 +174,8 @@ content_width   = cols × column_px
 content_height  = rows × row_px
 ```
 
+`0.6` 是缺省列宽比例。传入 `--font-file` 时，renderer 会用 skrifa 读取第一个可测字体的 space glyph advance（`advance/units_per_em`），以 `round(font_px × advance_ratio)` 作为列宽，使网格与内嵌字体的实际排版一致（asg#19）：0.55 em 的 Consolas 等字体不再让文本逐渐漂移出单元格。测不出 advance（feature 关闭、无字体文件、坏文件或字体无 space 映射）时回退到 0.6 em。CSS `letter-spacing` 使用同一个 advance ratio 补偿整数列宽的取整误差，因此列宽与观看端字体 advance 之间保持逐像素对齐。
+
 根 SVG 和裁剪层各自使用与物理尺寸相同的 `viewBox`，不再做 10 倍嵌套缩放。文本基线、行偏移、背景、光标和 frame offset 都落在整数像素。字体栈参考 agg，关闭 kerning、ligature、optical sizing 和 font synthesis，并在 macOS 浏览器请求灰阶 antialiasing；宽字符单独输出，使后续 run 从准确终端列重新开始。padding 会舍入到整数像素，window decoration 保持原有布局。
 
 浏览器可能在首个可用正文字体缺少符号时直接跳到彩色 emoji，而 agg 会先尝试内置 Symbols Nerd Font。renderer 因此把系统 symbol family 放在 emoji family 前，并对 Unicode 16.0 同时具有 text/emoji 标准变体、默认呈现为 emoji 的字符补充 VS15（显式 VS16 会原样保留）。这样 `⚡`、时钟等终端状态符号与 agg 一样优先单色显示，真正的彩色 emoji 仍可回退到系统 emoji 字体。

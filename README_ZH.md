@@ -79,6 +79,8 @@ asg demo.cast demo.svg \
 
 字体族、样式和字重从每个 face 的 `name`/`OS/2` 表读取，`--font-family` 字体栈继续决定选择顺序（内嵌字族不在栈中时 ASG 会告警）。渲染器禁用了 `font-synthesis`，录制中若使用了粗体或斜体，需要提供对应的 face。位图 emoji 字体（SBIX/CBDT）会被拒绝，请不传入这些字体，让观看端使用系统 emoji 兜底。增加的体积取决于字形覆盖范围和字体格式，完整 CFF 字体可能远大于 TrueType 子集。请确认每个字体的许可证允许内嵌。
 
+单元格宽度从第一个传入字体的 advance 实测得出，而非按固定比例假设：任意等宽字体都可用，不局限于 JetBrains Mono、Fira Code 这类 0.6 em 字体。未提供字体文件（或无法测出 advance）时，ASG 回退到经典的 0.6 em 单元格。
+
 ## 输入与兼容范围
 
 ASG 支持：
