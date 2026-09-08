@@ -7,7 +7,6 @@ description = "Convert asciicast v3 recordings to compact animated SVG"
 keywords = ["asciinema", "svg", "terminal", "animation", "converter"]
 
 edition.workspace = true
-homepage.workspace = true
 license.workspace = true
 readme.workspace = true
 repository.workspace = true
