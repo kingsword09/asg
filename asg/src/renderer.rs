@@ -114,30 +114,90 @@ struct BackgroundRun {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum GraphicKind {
-    Lines {
-        up: bool,
-        right: bool,
-        down: bool,
-        left: bool,
-    },
-    FullBlock,
-    UpperHalfBlock,
-    LowerHalfBlock,
+    BoxDrawing(char),
+    Block(char),
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum Thickness {
+    Light,
+    Heavy,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum LineStyle {
+    Single(Thickness),
+    Double,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum Orientation {
+    Horizontal,
+    Vertical,
+}
+
+impl Orientation {
+    fn swap(self) -> Self {
+        match self {
+            Self::Horizontal => Self::Vertical,
+            Self::Vertical => Self::Horizontal,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum Half {
+    First,
+    Last,
+    Both,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum LinePosition {
+    Before,
+    Middle,
+    After,
+}
+
+impl LinePosition {
+    fn opposite(self) -> Self {
+        match self {
+            Self::Before => Self::After,
+            Self::Middle => Self::Middle,
+            Self::After => Self::Before,
+        }
+    }
+
+    fn half(self) -> Half {
+        match self {
+            Self::Before => Half::First,
+            Self::Middle => Half::Both,
+            Self::After => Half::Last,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum Corner {
+    TopLeft,
+    TopRight,
+    BottomRight,
+    BottomLeft,
+}
+
+type BoxJoint = (
+    Option<Thickness>,
+    Option<Thickness>,
+    Option<Thickness>,
+    Option<Thickness>,
+);
 
 impl GraphicKind {
     fn mergeable(self) -> bool {
-        matches!(
-            self,
-            Self::Lines {
-                up: false,
-                right: true,
-                down: false,
-                left: true,
-            } | Self::FullBlock
-                | Self::UpperHalfBlock
-                | Self::LowerHalfBlock
-        )
+        match self {
+            Self::BoxDrawing(ch) => matches!(ch, '─' | '━' | '═'),
+            Self::Block(ch) => matches!(ch, '▀'..='█' | '▔'),
+        }
     }
 }
 
@@ -555,32 +615,14 @@ fn supports_graphic_style(style: TextStyle) -> bool {
 }
 
 fn graphic_kind(ch: char) -> Option<GraphicKind> {
-    use GraphicKind::{FullBlock, Lines, LowerHalfBlock, UpperHalfBlock};
-
-    let lines = |up, right, down, left| Lines {
-        up,
-        right,
-        down,
-        left,
-    };
-
-    Some(match ch {
-        '─' => lines(false, true, false, true),
-        '│' => lines(true, false, true, false),
-        '┌' => lines(false, true, true, false),
-        '┐' => lines(false, false, true, true),
-        '└' => lines(true, true, false, false),
-        '┘' => lines(true, false, false, true),
-        '├' => lines(true, true, true, false),
-        '┤' => lines(true, false, true, true),
-        '┬' => lines(false, true, true, true),
-        '┴' => lines(true, true, false, true),
-        '┼' => lines(true, true, true, true),
-        '█' => FullBlock,
-        '▀' => UpperHalfBlock,
-        '▄' => LowerHalfBlock,
-        _ => return None,
-    })
+    match ch {
+        '\u{2500}'..='\u{257f}' => Some(GraphicKind::BoxDrawing(ch)),
+        '\u{2580}'..='\u{2590}' | '\u{2594}'..='\u{259f}' => Some(GraphicKind::Block(ch)),
+        // Solid path geometry cannot represent the density of the shade glyphs
+        // without substantially increasing SVG size, so retain the font forms.
+        '\u{2591}'..='\u{2593}' => None,
+        _ => None,
+    }
 }
 
 fn text_runs(cells: &[Cell], theme: &Theme, synthetic_symbols: bool) -> Vec<TextRun> {
@@ -895,50 +937,991 @@ fn write_graphic_path(
 ) -> std::fmt::Result {
     let x = run.col * cell_width;
     let width = run.width * cell_width;
-    let thickness = (font_size.saturating_add(8) / 16)
+    let thin = (font_size.saturating_add(8) / 16)
         .max(1)
         .min(cell_width)
         .min(row_height);
-    let center_x = (cell_width - thickness) / 2;
-    let center_y = (row_height - thickness) / 2;
     match run.kind {
-        GraphicKind::Lines {
-            up,
-            right,
-            down,
-            left,
-        } => {
-            if left || right {
-                let left_x = if left { x } else { x + center_x };
-                let right_x = if right {
-                    x + width
-                } else {
-                    x + center_x + thickness
-                };
-                write_rect_path(output, left_x, center_y, right_x - left_x, thickness)?;
-            }
-            if up || down {
-                let top_y = if up { 0 } else { center_y };
-                let bottom_y = if down {
-                    row_height
-                } else {
-                    center_y + thickness
-                };
-                write_rect_path(output, x + center_x, top_y, thickness, bottom_y - top_y)?;
-            }
+        GraphicKind::BoxDrawing(ch) => {
+            write_box_drawing_path(output, ch, x, width, row_height, thin)?
         }
-        GraphicKind::FullBlock => {
-            write_rect_path(output, x, 0, width, row_height)?;
-        }
-        GraphicKind::UpperHalfBlock => {
-            write_rect_path(output, x, 0, width, row_height / 2)?;
-        }
-        GraphicKind::LowerHalfBlock => {
-            let top = row_height / 2;
-            write_rect_path(output, x, top, width, row_height - top)?;
-        }
+        GraphicKind::Block(ch) => write_block_path(output, ch, x, width, row_height)?,
     }
 
+    Ok(())
+}
+
+fn write_box_drawing_path(
+    output: &mut String,
+    ch: char,
+    x: usize,
+    width: usize,
+    height: usize,
+    thin: usize,
+) -> std::fmt::Result {
+    use Half::{Both, First, Last};
+    use Orientation::{Horizontal, Vertical};
+
+    let heavy = thin.saturating_mul(2).min(width).min(height).max(1);
+    let offset = thin.saturating_mul(2).max(1);
+
+    if let Some((corner, horizontal, vertical)) = box_corner(ch) {
+        return write_corner_path(
+            output, x, width, height, thin, heavy, offset, corner, horizontal, vertical,
+        );
+    }
+    if let Some((up, right, down, left)) = box_joint(ch) {
+        return write_joint_path(
+            output, x, width, height, thin, heavy, offset, up, right, down, left,
+        );
+    }
+
+    let single = |output: &mut String, orientation, half, thickness, target_thickness| {
+        write_line_segment(
+            output,
+            x,
+            width,
+            height,
+            offset,
+            orientation,
+            half,
+            LinePosition::Middle,
+            LinePosition::Middle,
+            thickness,
+            target_thickness,
+        )
+    };
+
+    match ch {
+        '─' => single(output, Horizontal, Both, thin, thin),
+        '━' => single(output, Horizontal, Both, heavy, heavy),
+        '│' => single(output, Vertical, Both, thin, thin),
+        '┃' => single(output, Vertical, Both, heavy, heavy),
+        '┄' => write_dashed_line(output, x, width, height, Horizontal, thin, 3),
+        '┅' => write_dashed_line(output, x, width, height, Horizontal, heavy, 3),
+        '┆' => write_dashed_line(output, x, width, height, Vertical, thin, 3),
+        '┇' => write_dashed_line(output, x, width, height, Vertical, heavy, 3),
+        '┈' => write_dashed_line(output, x, width, height, Horizontal, thin, 4),
+        '┉' => write_dashed_line(output, x, width, height, Horizontal, heavy, 4),
+        '┊' => write_dashed_line(output, x, width, height, Vertical, thin, 4),
+        '┋' => write_dashed_line(output, x, width, height, Vertical, heavy, 4),
+        '╌' => write_dashed_line(output, x, width, height, Horizontal, thin, 2),
+        '╍' => write_dashed_line(output, x, width, height, Horizontal, heavy, 2),
+        '╎' => write_dashed_line(output, x, width, height, Vertical, thin, 2),
+        '╏' => write_dashed_line(output, x, width, height, Vertical, heavy, 2),
+        '═' => write_double_line(output, x, width, height, thin, offset, Horizontal, Both),
+        '║' => write_double_line(output, x, width, height, thin, offset, Vertical, Both),
+        '╞' => write_double_to_single_t(output, x, width, height, thin, offset, Vertical, Last),
+        '╟' => write_single_to_double_t(
+            output,
+            x,
+            width,
+            height,
+            thin,
+            offset,
+            Vertical,
+            Last,
+            LinePosition::After,
+        ),
+        '╠' => write_double_t(
+            output,
+            x,
+            width,
+            height,
+            thin,
+            offset,
+            Vertical,
+            LinePosition::After,
+        ),
+        '╡' => write_double_to_single_t(output, x, width, height, thin, offset, Vertical, First),
+        '╢' => write_single_to_double_t(
+            output,
+            x,
+            width,
+            height,
+            thin,
+            offset,
+            Vertical,
+            First,
+            LinePosition::Before,
+        ),
+        '╣' => write_double_t(
+            output,
+            x,
+            width,
+            height,
+            thin,
+            offset,
+            Vertical,
+            LinePosition::Before,
+        ),
+        '╤' => write_single_to_double_t(
+            output,
+            x,
+            width,
+            height,
+            thin,
+            offset,
+            Horizontal,
+            Last,
+            LinePosition::After,
+        ),
+        '╥' => write_double_to_single_t(output, x, width, height, thin, offset, Horizontal, Last),
+        '╦' => write_double_t(
+            output,
+            x,
+            width,
+            height,
+            thin,
+            offset,
+            Horizontal,
+            LinePosition::After,
+        ),
+        '╧' => write_single_to_double_t(
+            output,
+            x,
+            width,
+            height,
+            thin,
+            offset,
+            Horizontal,
+            First,
+            LinePosition::Before,
+        ),
+        '╨' => {
+            write_double_to_single_t(output, x, width, height, thin, offset, Horizontal, First)
+        }
+        '╩' => write_double_t(
+            output,
+            x,
+            width,
+            height,
+            thin,
+            offset,
+            Horizontal,
+            LinePosition::Before,
+        ),
+        '╪' => write_single_double_cross(output, x, width, height, thin, offset, Horizontal),
+        '╫' => write_single_double_cross(output, x, width, height, thin, offset, Vertical),
+        '╬' => write_double_cross(output, x, width, height, thin, offset),
+        '╭' => write_rounded_corner_path(output, x, width, height, thin, Corner::TopLeft),
+        '╮' => write_rounded_corner_path(output, x, width, height, thin, Corner::TopRight),
+        '╯' => write_rounded_corner_path(output, x, width, height, thin, Corner::BottomRight),
+        '╰' => write_rounded_corner_path(output, x, width, height, thin, Corner::BottomLeft),
+        '╱' => write_diagonal_path(output, x, width, height, thin, true),
+        '╲' => write_diagonal_path(output, x, width, height, thin, false),
+        '╳' => {
+            write_diagonal_path(output, x, width, height, thin, true)?;
+            write_diagonal_path(output, x, width, height, thin, false)
+        }
+        '╴' => single(output, Horizontal, First, thin, thin),
+        '╵' => single(output, Vertical, First, thin, thin),
+        '╶' => single(output, Horizontal, Last, thin, thin),
+        '╷' => single(output, Vertical, Last, thin, thin),
+        '╸' => single(output, Horizontal, First, heavy, heavy),
+        '╹' => single(output, Vertical, First, heavy, heavy),
+        '╺' => single(output, Horizontal, Last, heavy, heavy),
+        '╻' => single(output, Vertical, Last, heavy, heavy),
+        '╼' => {
+            single(output, Horizontal, First, thin, heavy)?;
+            single(output, Horizontal, Last, heavy, thin)
+        }
+        '╽' => {
+            single(output, Vertical, First, thin, heavy)?;
+            single(output, Vertical, Last, heavy, thin)
+        }
+        '╾' => {
+            single(output, Horizontal, First, heavy, thin)?;
+            single(output, Horizontal, Last, thin, heavy)
+        }
+        '╿' => {
+            single(output, Vertical, First, heavy, thin)?;
+            single(output, Vertical, Last, thin, heavy)
+        }
+        _ => Ok(()),
+    }
+}
+
+fn box_corner(ch: char) -> Option<(Corner, LineStyle, LineStyle)> {
+    use Corner::{BottomLeft, BottomRight, TopLeft, TopRight};
+    use LineStyle::{Double, Single};
+    use Thickness::{Heavy, Light};
+
+    Some(match ch {
+        '┌' => (TopLeft, Single(Light), Single(Light)),
+        '┍' => (TopLeft, Single(Heavy), Single(Light)),
+        '┎' => (TopLeft, Single(Light), Single(Heavy)),
+        '┏' => (TopLeft, Single(Heavy), Single(Heavy)),
+        '╒' => (TopLeft, Double, Single(Light)),
+        '╓' => (TopLeft, Single(Light), Double),
+        '╔' => (TopLeft, Double, Double),
+        '┐' => (TopRight, Single(Light), Single(Light)),
+        '┑' => (TopRight, Single(Heavy), Single(Light)),
+        '┒' => (TopRight, Single(Light), Single(Heavy)),
+        '┓' => (TopRight, Single(Heavy), Single(Heavy)),
+        '╕' => (TopRight, Double, Single(Light)),
+        '╖' => (TopRight, Single(Light), Double),
+        '╗' => (TopRight, Double, Double),
+        '└' => (BottomLeft, Single(Light), Single(Light)),
+        '┕' => (BottomLeft, Single(Heavy), Single(Light)),
+        '┖' => (BottomLeft, Single(Light), Single(Heavy)),
+        '┗' => (BottomLeft, Single(Heavy), Single(Heavy)),
+        '╘' => (BottomLeft, Double, Single(Light)),
+        '╙' => (BottomLeft, Single(Light), Double),
+        '╚' => (BottomLeft, Double, Double),
+        '┘' => (BottomRight, Single(Light), Single(Light)),
+        '┙' => (BottomRight, Single(Heavy), Single(Light)),
+        '┚' => (BottomRight, Single(Light), Single(Heavy)),
+        '┛' => (BottomRight, Single(Heavy), Single(Heavy)),
+        '╛' => (BottomRight, Double, Single(Light)),
+        '╜' => (BottomRight, Single(Light), Double),
+        '╝' => (BottomRight, Double, Double),
+        _ => return None,
+    })
+}
+
+fn box_joint(ch: char) -> Option<BoxJoint> {
+    use Thickness::{Heavy as H, Light as L};
+
+    Some(match ch {
+        '├' => (Some(L), Some(L), Some(L), None),
+        '┝' => (Some(L), Some(H), Some(L), None),
+        '┞' => (Some(H), Some(L), Some(L), None),
+        '┟' => (Some(L), Some(L), Some(H), None),
+        '┠' => (Some(H), Some(L), Some(H), None),
+        '┡' => (Some(H), Some(H), Some(L), None),
+        '┢' => (Some(L), Some(H), Some(H), None),
+        '┣' => (Some(H), Some(H), Some(H), None),
+        '┤' => (Some(L), None, Some(L), Some(L)),
+        '┥' => (Some(L), None, Some(L), Some(H)),
+        '┦' => (Some(H), None, Some(L), Some(L)),
+        '┧' => (Some(L), None, Some(H), Some(L)),
+        '┨' => (Some(H), None, Some(H), Some(L)),
+        '┩' => (Some(H), None, Some(L), Some(H)),
+        '┪' => (Some(L), None, Some(H), Some(H)),
+        '┫' => (Some(H), None, Some(H), Some(H)),
+        '┬' => (None, Some(L), Some(L), Some(L)),
+        '┭' => (None, Some(L), Some(L), Some(H)),
+        '┮' => (None, Some(H), Some(L), Some(L)),
+        '┯' => (None, Some(H), Some(L), Some(H)),
+        '┰' => (None, Some(L), Some(H), Some(L)),
+        '┱' => (None, Some(L), Some(H), Some(H)),
+        '┲' => (None, Some(H), Some(H), Some(L)),
+        '┳' => (None, Some(H), Some(H), Some(H)),
+        '┴' => (Some(L), Some(L), None, Some(L)),
+        '┵' => (Some(L), Some(L), None, Some(H)),
+        '┶' => (Some(L), Some(H), None, Some(L)),
+        '┷' => (Some(L), Some(H), None, Some(H)),
+        '┸' => (Some(H), Some(L), None, Some(L)),
+        '┹' => (Some(H), Some(L), None, Some(H)),
+        '┺' => (Some(H), Some(H), None, Some(L)),
+        '┻' => (Some(H), Some(H), None, Some(H)),
+        '┼' => (Some(L), Some(L), Some(L), Some(L)),
+        '┽' => (Some(L), Some(L), Some(L), Some(H)),
+        '┾' => (Some(L), Some(H), Some(L), Some(L)),
+        '┿' => (Some(L), Some(H), Some(L), Some(H)),
+        '╀' => (Some(H), Some(L), Some(L), Some(L)),
+        '╁' => (Some(L), Some(L), Some(H), Some(L)),
+        '╂' => (Some(H), Some(L), Some(H), Some(L)),
+        '╃' => (Some(H), Some(L), Some(L), Some(H)),
+        '╄' => (Some(H), Some(H), Some(L), Some(L)),
+        '╅' => (Some(L), Some(L), Some(H), Some(H)),
+        '╆' => (Some(L), Some(H), Some(H), Some(L)),
+        '╇' => (Some(H), Some(H), Some(L), Some(H)),
+        '╈' => (Some(L), Some(H), Some(H), Some(H)),
+        '╉' => (Some(H), Some(L), Some(H), Some(H)),
+        '╊' => (Some(H), Some(H), Some(H), Some(L)),
+        '╋' => (Some(H), Some(H), Some(H), Some(H)),
+        _ => return None,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_line_segment(
+    output: &mut String,
+    x: usize,
+    width: usize,
+    height: usize,
+    offset: usize,
+    orientation: Orientation,
+    half: Half,
+    position: LinePosition,
+    target_position: LinePosition,
+    thickness: usize,
+    target_thickness: usize,
+) -> std::fmt::Result {
+    let (axis_length, cross_length) = match orientation {
+        Orientation::Horizontal => (width, height),
+        Orientation::Vertical => (height, width),
+    };
+    let (cross_start, cross_end) = line_band(cross_length, thickness, position, offset);
+    let (target_start, target_end) =
+        line_band(axis_length, target_thickness, target_position, offset);
+    let (axis_start, axis_end) = match half {
+        Half::First => (0, target_end),
+        Half::Last => (target_start, axis_length),
+        Half::Both => (0, axis_length),
+    };
+
+    match orientation {
+        Orientation::Horizontal => write_rect_path(
+            output,
+            x + axis_start,
+            cross_start,
+            axis_end - axis_start,
+            cross_end - cross_start,
+        ),
+        Orientation::Vertical => write_rect_path(
+            output,
+            x + cross_start,
+            axis_start,
+            cross_end - cross_start,
+            axis_end - axis_start,
+        ),
+    }
+}
+
+fn line_band(
+    length: usize,
+    thickness: usize,
+    position: LinePosition,
+    offset: usize,
+) -> (usize, usize) {
+    let thickness = thickness.max(1).min(length);
+    let middle = (length - thickness) / 2;
+    let start = match position {
+        LinePosition::Before => middle.saturating_sub(offset),
+        LinePosition::Middle => middle,
+        LinePosition::After => (middle + offset).min(length - thickness),
+    };
+    (start, start + thickness)
+}
+
+fn thickness_px(thickness: Thickness, thin: usize, heavy: usize) -> usize {
+    match thickness {
+        Thickness::Light => thin,
+        Thickness::Heavy => heavy,
+    }
+}
+
+fn line_style_px(style: LineStyle, thin: usize, heavy: usize) -> usize {
+    match style {
+        LineStyle::Single(thickness) => thickness_px(thickness, thin, heavy),
+        LineStyle::Double => thin,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_corner_path(
+    output: &mut String,
+    x: usize,
+    width: usize,
+    height: usize,
+    thin: usize,
+    heavy: usize,
+    offset: usize,
+    corner: Corner,
+    horizontal: LineStyle,
+    vertical: LineStyle,
+) -> std::fmt::Result {
+    let horizontal_thickness = line_style_px(horizontal, thin, heavy);
+    let vertical_thickness = line_style_px(vertical, thin, heavy);
+    let outer_horizontal = match (corner, horizontal) {
+        (_, LineStyle::Single(_)) => LinePosition::Middle,
+        (Corner::TopLeft | Corner::TopRight, LineStyle::Double) => LinePosition::Before,
+        (Corner::BottomLeft | Corner::BottomRight, LineStyle::Double) => LinePosition::After,
+    };
+    let outer_vertical = match (corner, vertical) {
+        (_, LineStyle::Single(_)) => LinePosition::Middle,
+        (Corner::TopLeft | Corner::BottomLeft, LineStyle::Double) => LinePosition::Before,
+        (Corner::TopRight | Corner::BottomRight, LineStyle::Double) => LinePosition::After,
+    };
+    let inner_horizontal = outer_horizontal.opposite();
+    let inner_vertical = outer_vertical.opposite();
+    let horizontal_half = match corner {
+        Corner::TopLeft | Corner::BottomLeft => Half::Last,
+        Corner::TopRight | Corner::BottomRight => Half::First,
+    };
+    let vertical_half = match corner {
+        Corner::TopLeft | Corner::TopRight => Half::Last,
+        Corner::BottomLeft | Corner::BottomRight => Half::First,
+    };
+
+    write_line_segment(
+        output,
+        x,
+        width,
+        height,
+        offset,
+        Orientation::Horizontal,
+        horizontal_half,
+        outer_horizontal,
+        outer_vertical,
+        horizontal_thickness,
+        vertical_thickness,
+    )?;
+    write_line_segment(
+        output,
+        x,
+        width,
+        height,
+        offset,
+        Orientation::Vertical,
+        vertical_half,
+        outer_vertical,
+        outer_horizontal,
+        vertical_thickness,
+        horizontal_thickness,
+    )?;
+    if horizontal == LineStyle::Double {
+        write_line_segment(
+            output,
+            x,
+            width,
+            height,
+            offset,
+            Orientation::Horizontal,
+            horizontal_half,
+            inner_horizontal,
+            inner_vertical,
+            horizontal_thickness,
+            vertical_thickness,
+        )?;
+    }
+    if vertical == LineStyle::Double {
+        write_line_segment(
+            output,
+            x,
+            width,
+            height,
+            offset,
+            Orientation::Vertical,
+            vertical_half,
+            inner_vertical,
+            inner_horizontal,
+            vertical_thickness,
+            horizontal_thickness,
+        )?;
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_joint_path(
+    output: &mut String,
+    x: usize,
+    width: usize,
+    height: usize,
+    thin: usize,
+    heavy: usize,
+    offset: usize,
+    up: Option<Thickness>,
+    right: Option<Thickness>,
+    down: Option<Thickness>,
+    left: Option<Thickness>,
+) -> std::fmt::Result {
+    let joint = [up, right, down, left]
+        .into_iter()
+        .flatten()
+        .map(|thickness| thickness_px(thickness, thin, heavy))
+        .max()
+        .unwrap_or(thin);
+    for (thickness, orientation, half) in [
+        (up, Orientation::Vertical, Half::First),
+        (right, Orientation::Horizontal, Half::Last),
+        (down, Orientation::Vertical, Half::Last),
+        (left, Orientation::Horizontal, Half::First),
+    ] {
+        if let Some(thickness) = thickness {
+            write_line_segment(
+                output,
+                x,
+                width,
+                height,
+                offset,
+                orientation,
+                half,
+                LinePosition::Middle,
+                LinePosition::Middle,
+                thickness_px(thickness, thin, heavy),
+                joint,
+            )?;
+        }
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_double_line(
+    output: &mut String,
+    x: usize,
+    width: usize,
+    height: usize,
+    thin: usize,
+    offset: usize,
+    orientation: Orientation,
+    half: Half,
+) -> std::fmt::Result {
+    for position in [LinePosition::Before, LinePosition::After] {
+        write_line_segment(
+            output,
+            x,
+            width,
+            height,
+            offset,
+            orientation,
+            half,
+            position,
+            LinePosition::Middle,
+            thin,
+            thin,
+        )?;
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_double_to_single_t(
+    output: &mut String,
+    x: usize,
+    width: usize,
+    height: usize,
+    thin: usize,
+    offset: usize,
+    single_orientation: Orientation,
+    double_half: Half,
+) -> std::fmt::Result {
+    write_line_segment(
+        output,
+        x,
+        width,
+        height,
+        offset,
+        single_orientation,
+        Half::Both,
+        LinePosition::Middle,
+        LinePosition::Middle,
+        thin,
+        thin,
+    )?;
+    write_double_line(
+        output,
+        x,
+        width,
+        height,
+        thin,
+        offset,
+        single_orientation.swap(),
+        double_half,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_single_to_double_t(
+    output: &mut String,
+    x: usize,
+    width: usize,
+    height: usize,
+    thin: usize,
+    offset: usize,
+    double_orientation: Orientation,
+    single_half: Half,
+    target: LinePosition,
+) -> std::fmt::Result {
+    write_double_line(
+        output,
+        x,
+        width,
+        height,
+        thin,
+        offset,
+        double_orientation,
+        Half::Both,
+    )?;
+    write_line_segment(
+        output,
+        x,
+        width,
+        height,
+        offset,
+        double_orientation.swap(),
+        single_half,
+        LinePosition::Middle,
+        target,
+        thin,
+        thin,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_double_t(
+    output: &mut String,
+    x: usize,
+    width: usize,
+    height: usize,
+    thin: usize,
+    offset: usize,
+    orientation: Orientation,
+    side: LinePosition,
+) -> std::fmt::Result {
+    write_line_segment(
+        output,
+        x,
+        width,
+        height,
+        offset,
+        orientation,
+        Half::Both,
+        side.opposite(),
+        LinePosition::Middle,
+        thin,
+        thin,
+    )?;
+    write_line_segment(
+        output,
+        x,
+        width,
+        height,
+        offset,
+        orientation,
+        Half::First,
+        side,
+        LinePosition::Before,
+        thin,
+        thin,
+    )?;
+    write_line_segment(
+        output,
+        x,
+        width,
+        height,
+        offset,
+        orientation,
+        Half::Last,
+        side,
+        LinePosition::After,
+        thin,
+        thin,
+    )?;
+    for position in [LinePosition::Before, LinePosition::After] {
+        write_line_segment(
+            output,
+            x,
+            width,
+            height,
+            offset,
+            orientation.swap(),
+            side.half(),
+            position,
+            side,
+            thin,
+            thin,
+        )?;
+    }
+    Ok(())
+}
+
+fn write_single_double_cross(
+    output: &mut String,
+    x: usize,
+    width: usize,
+    height: usize,
+    thin: usize,
+    offset: usize,
+    double_orientation: Orientation,
+) -> std::fmt::Result {
+    write_double_line(
+        output,
+        x,
+        width,
+        height,
+        thin,
+        offset,
+        double_orientation,
+        Half::Both,
+    )?;
+    let single_orientation = double_orientation.swap();
+    write_line_segment(
+        output,
+        x,
+        width,
+        height,
+        offset,
+        single_orientation,
+        Half::First,
+        LinePosition::Middle,
+        LinePosition::Before,
+        thin,
+        thin,
+    )?;
+    write_line_segment(
+        output,
+        x,
+        width,
+        height,
+        offset,
+        single_orientation,
+        Half::Last,
+        LinePosition::Middle,
+        LinePosition::After,
+        thin,
+        thin,
+    )
+}
+
+fn write_double_cross(
+    output: &mut String,
+    x: usize,
+    width: usize,
+    height: usize,
+    thin: usize,
+    offset: usize,
+) -> std::fmt::Result {
+    for first in [LinePosition::Before, LinePosition::After] {
+        for second in [LinePosition::Before, LinePosition::After] {
+            write_line_segment(
+                output,
+                x,
+                width,
+                height,
+                offset,
+                Orientation::Horizontal,
+                first.half(),
+                second,
+                first,
+                thin,
+                thin,
+            )?;
+            write_line_segment(
+                output,
+                x,
+                width,
+                height,
+                offset,
+                Orientation::Vertical,
+                first.half(),
+                second,
+                first,
+                thin,
+                thin,
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn write_dashed_line(
+    output: &mut String,
+    x: usize,
+    width: usize,
+    height: usize,
+    orientation: Orientation,
+    thickness: usize,
+    count: usize,
+) -> std::fmt::Result {
+    let axis_length = match orientation {
+        Orientation::Horizontal => width,
+        Orientation::Vertical => height,
+    };
+    let cross_length = match orientation {
+        Orientation::Horizontal => height,
+        Orientation::Vertical => width,
+    };
+    let gap = (width / (count * 2)).max(1);
+    let (cross_start, cross_end) = line_band(cross_length, thickness, LinePosition::Middle, 0);
+    for index in 0..count {
+        let bin_start = index * axis_length / count;
+        let bin_end = (index + 1) * axis_length / count;
+        let mut start = bin_start + gap / 2;
+        let mut end = bin_end.saturating_sub(gap - gap / 2);
+        if end <= start {
+            start = (bin_start + bin_end.saturating_sub(1)) / 2;
+            end = (start + 1).min(axis_length);
+        }
+        match orientation {
+            Orientation::Horizontal => write_rect_path(
+                output,
+                x + start,
+                cross_start,
+                end - start,
+                cross_end - cross_start,
+            )?,
+            Orientation::Vertical => write_rect_path(
+                output,
+                x + cross_start,
+                start,
+                cross_end - cross_start,
+                end - start,
+            )?,
+        }
+    }
+    Ok(())
+}
+
+fn write_rounded_corner_path(
+    output: &mut String,
+    x: usize,
+    width: usize,
+    height: usize,
+    thin: usize,
+    corner: Corner,
+) -> std::fmt::Result {
+    let (x0, x1) = line_band(width, thin, LinePosition::Middle, 0);
+    let (y0, y1) = line_band(height, thin, LinePosition::Middle, 0);
+    let x0 = x + x0;
+    let x1 = x + x1;
+    let right = x + width;
+    match corner {
+        Corner::TopLeft => write!(
+            output,
+            "M{right} {y0}Q{x0} {y0} {x0} {height}L{x1} {height}Q{x1} {y1} {right} {y1}Z"
+        ),
+        Corner::TopRight => write!(
+            output,
+            "M{x} {y0}Q{x1} {y0} {x1} {height}L{x0} {height}Q{x0} {y1} {x} {y1}Z"
+        ),
+        Corner::BottomRight => write!(
+            output,
+            "M{x} {y0}Q{x1} {y0} {x1} 0L{x0} 0Q{x0} {y1} {x} {y1}Z"
+        ),
+        Corner::BottomLeft => write!(
+            output,
+            "M{right} {y0}Q{x0} {y0} {x0} 0L{x1} 0Q{x1} {y1} {right} {y1}Z"
+        ),
+    }
+}
+
+fn write_diagonal_path(
+    output: &mut String,
+    x: usize,
+    width: usize,
+    height: usize,
+    thickness: usize,
+    rising: bool,
+) -> std::fmt::Result {
+    let thickness = thickness.min(width).min(height).max(1);
+    let right = x + width;
+    if rising {
+        write!(
+            output,
+            "M{right} 0L{} 0L{x} {}L{x} {height}L{} {height}L{right} {thickness}Z",
+            right - thickness,
+            height - thickness,
+            x + thickness,
+        )
+    } else {
+        write!(
+            output,
+            "M{x} 0L{} 0L{right} {}L{right} {height}L{} {height}L{x} {thickness}Z",
+            x + thickness,
+            height - thickness,
+            right - thickness,
+        )
+    }
+}
+
+fn write_block_path(
+    output: &mut String,
+    ch: char,
+    x: usize,
+    width: usize,
+    height: usize,
+) -> std::fmt::Result {
+    match ch {
+        '▀' => write_eighth_rect(output, x, width, height, Orientation::Horizontal, 0, 4),
+        '▁' => write_eighth_rect(output, x, width, height, Orientation::Horizontal, 7, 8),
+        '▂' => write_eighth_rect(output, x, width, height, Orientation::Horizontal, 6, 8),
+        '▃' => write_eighth_rect(output, x, width, height, Orientation::Horizontal, 5, 8),
+        '▄' => write_eighth_rect(output, x, width, height, Orientation::Horizontal, 4, 8),
+        '▅' => write_eighth_rect(output, x, width, height, Orientation::Horizontal, 3, 8),
+        '▆' => write_eighth_rect(output, x, width, height, Orientation::Horizontal, 2, 8),
+        '▇' => write_eighth_rect(output, x, width, height, Orientation::Horizontal, 1, 8),
+        '█' => write_rect_path(output, x, 0, width, height),
+        '▉' => write_eighth_rect(output, x, width, height, Orientation::Vertical, 0, 7),
+        '▊' => write_eighth_rect(output, x, width, height, Orientation::Vertical, 0, 6),
+        '▋' => write_eighth_rect(output, x, width, height, Orientation::Vertical, 0, 5),
+        '▌' => write_eighth_rect(output, x, width, height, Orientation::Vertical, 0, 4),
+        '▍' => write_eighth_rect(output, x, width, height, Orientation::Vertical, 0, 3),
+        '▎' => write_eighth_rect(output, x, width, height, Orientation::Vertical, 0, 2),
+        '▏' => write_eighth_rect(output, x, width, height, Orientation::Vertical, 0, 1),
+        '▐' => write_eighth_rect(output, x, width, height, Orientation::Vertical, 4, 8),
+        '▔' => write_eighth_rect(output, x, width, height, Orientation::Horizontal, 0, 1),
+        '▕' => write_eighth_rect(output, x, width, height, Orientation::Vertical, 7, 8),
+        '▖' => write_quadrants(output, x, width, height, 0b0100),
+        '▗' => write_quadrants(output, x, width, height, 0b1000),
+        '▘' => write_quadrants(output, x, width, height, 0b0001),
+        '▙' => write_quadrants(output, x, width, height, 0b1101),
+        '▚' => write_quadrants(output, x, width, height, 0b1001),
+        '▛' => write_quadrants(output, x, width, height, 0b0111),
+        '▜' => write_quadrants(output, x, width, height, 0b1011),
+        '▝' => write_quadrants(output, x, width, height, 0b0010),
+        '▞' => write_quadrants(output, x, width, height, 0b0110),
+        '▟' => write_quadrants(output, x, width, height, 0b1110),
+        _ => Ok(()),
+    }
+}
+
+fn write_eighth_rect(
+    output: &mut String,
+    x: usize,
+    width: usize,
+    height: usize,
+    orientation: Orientation,
+    start: usize,
+    end: usize,
+) -> std::fmt::Result {
+    let eighth = |length: usize, index: usize| length / 8 * index + (length % 8 * index + 4) / 8;
+    match orientation {
+        Orientation::Horizontal => {
+            let (top, bottom) =
+                nonempty_interval(eighth(height, start), eighth(height, end), height);
+            write_rect_path(output, x, top, width, bottom - top)
+        }
+        Orientation::Vertical => {
+            let (left, right) = nonempty_interval(eighth(width, start), eighth(width, end), width);
+            write_rect_path(output, x + left, 0, right - left, height)
+        }
+    }
+}
+
+fn nonempty_interval(start: usize, end: usize, limit: usize) -> (usize, usize) {
+    if end > start {
+        return (start, end);
+    }
+    if end < limit {
+        (end, end + 1)
+    } else {
+        (limit.saturating_sub(1), limit)
+    }
+}
+
+fn write_quadrants(
+    output: &mut String,
+    x: usize,
+    width: usize,
+    height: usize,
+    mask: u8,
+) -> std::fmt::Result {
+    let left_end = width.div_ceil(2);
+    let right_start = width / 2;
+    let top_end = height.div_ceil(2);
+    let bottom_start = height / 2;
+    for (bit, left, top, quadrant_width, quadrant_height) in [
+        (0b0001, 0, 0, left_end, top_end),
+        (0b0010, right_start, 0, width - right_start, top_end),
+        (0b0100, 0, bottom_start, left_end, height - bottom_start),
+        (
+            0b1000,
+            right_start,
+            bottom_start,
+            width - right_start,
+            height - bottom_start,
+        ),
+    ] {
+        if mask & bit != 0 {
+            write_rect_path(output, x + left, top, quadrant_width, quadrant_height)?;
+        }
+    }
     Ok(())
 }
 
@@ -949,6 +1932,9 @@ fn write_rect_path(
     width: usize,
     height: usize,
 ) -> std::fmt::Result {
+    if width == 0 || height == 0 {
+        return Ok(());
+    }
     write!(output, "M{x} {y}h{width}v{height}H{x}")
 }
 
@@ -1141,6 +2127,22 @@ mod tests {
         build(&cast, &TimelineOptions::default()).unwrap()
     }
 
+    fn graphic_path(ch: char) -> String {
+        graphic_path_at(ch, 10, 16, 22)
+    }
+
+    fn graphic_path_at(ch: char, cell_width: usize, font_size: usize, row_height: usize) -> String {
+        let mut output = String::new();
+        let run = GraphicRun {
+            col: 0,
+            width: 1,
+            kind: graphic_kind(ch).expect("synthetic graphic"),
+            style: default_style(&Theme::default()),
+        };
+        write_graphic_path(&mut output, &run, cell_width, font_size, row_height).unwrap();
+        output
+    }
+
     #[test]
     fn uses_pixel_native_default_canvas_geometry() {
         let svg = render(
@@ -1223,6 +2225,146 @@ mod tests {
         assert!(svg.contains("M10 0h10v22H10"));
         assert!(svg.contains("M20 0h10v11H20"));
         assert!(svg.contains("M30 11h10v11H30"));
+    }
+
+    #[test]
+    fn renders_double_line_box_drawing_as_paired_paths() {
+        let svg = render(
+            &timeline("[0,\"o\",\"╔═╗\\r\\n║╬║\\r\\n╚═╝\"]\n", 5, 3),
+            &RenderOptions::default(),
+        )
+        .unwrap();
+
+        assert!(!svg.contains(">═</text>"));
+        assert!(!svg.contains(">╬</text>"));
+        // Horizontal double rules straddle the vertical center line y=10.
+        assert!(svg.contains("M10 8h10v1H10"));
+        assert!(svg.contains("M10 12h10v1H10"));
+        // The vertical sides are paired full-height rules.
+        assert!(svg.contains("M2 0h1v22H2"));
+        assert!(svg.contains("M6 0h1v22H6"));
+        // Both rules in the top-left corner join continuously at their bends.
+        assert!(svg.contains("M2 8h8v1H2M2 8h1v14H2"));
+        assert!(svg.contains("M6 12h4v1H6M6 12h1v10H6"));
+    }
+
+    #[test]
+    fn renders_half_line_and_heavy_box_drawing_as_paths() {
+        let svg = render(
+            &timeline("[0,\"o\",\"╶─╴\\r\\n╵┃╷\"]\n", 5, 2),
+            &RenderOptions::default(),
+        )
+        .unwrap();
+
+        assert_eq!(svg.matches("<path ").count(), 2);
+        // Half lines stop at the center line toward their open side.
+        assert!(svg.contains("M4 10h6v1H4"));
+        assert!(svg.contains("M20 10h5v1H20"));
+        // Heavy strokes remain visibly wider than light strokes.
+        assert!(svg.contains("M14 0h2v22H14"));
+    }
+
+    #[test]
+    fn renders_partial_and_quadrant_blocks_as_paths() {
+        let svg = render(
+            &timeline("[0,\"o\",\"▁▅▌▐\\r\\n▖▝▘▗\"]\n", 8, 2),
+            &RenderOptions::default(),
+        )
+        .unwrap();
+
+        assert_eq!(svg.matches("<path ").count(), 2);
+        // Eighths blocks fill from the bottom of the 22px cell.
+        assert!(svg.contains("M0 19h10v3H0"));
+        assert!(svg.contains("M10 8h10v14H10"));
+        // Left/right half blocks split the cell width in half.
+        assert!(svg.contains("M20 0h5v22H20"));
+        assert!(svg.contains("M35 0h5v22H35"));
+        // Quadrants fill one half-width by half-height rect each.
+        assert!(svg.contains("M0 11h5v11H0"));
+        assert!(svg.contains("M15 0h5v11H15"));
+        assert!(svg.contains("M20 0h5v11H20"));
+        assert!(svg.contains("M35 11h5v11H35"));
+    }
+
+    #[test]
+    fn shade_blocks_keep_their_font_glyphs() {
+        let svg = render(
+            &timeline("[0,\"o\",\"░▒▓\"]\n", 5, 1),
+            &RenderOptions::default(),
+        )
+        .unwrap();
+
+        assert_eq!(svg.matches("<path ").count(), 0);
+        assert!(svg.contains(">░▒▓</text>"));
+    }
+
+    #[test]
+    fn covers_every_box_drawing_codepoint_with_nonempty_geometry() {
+        let chars = ('\u{2500}'..='\u{257f}').collect::<String>();
+        for ch in chars.chars() {
+            assert!(
+                !graphic_path(ch).is_empty(),
+                "U+{:04X} produced no path geometry",
+                u32::from(ch)
+            );
+        }
+
+        let svg = render(
+            &timeline(&format!("[0,\"o\",\"{chars}\"]\n"), 128, 1),
+            &RenderOptions::default(),
+        )
+        .unwrap();
+        roxmltree::Document::parse(&svg).unwrap();
+        assert!(!svg.contains("<text"));
+    }
+
+    #[test]
+    fn covers_every_non_shade_block_element_with_nonempty_geometry() {
+        let chars = ('\u{2580}'..='\u{2590}')
+            .chain('\u{2594}'..='\u{259f}')
+            .collect::<String>();
+        for ch in chars.chars() {
+            assert!(
+                !graphic_path(ch).is_empty(),
+                "U+{:04X} produced no path geometry",
+                u32::from(ch)
+            );
+        }
+
+        let svg = render(
+            &timeline(&format!("[0,\"o\",\"{chars}\"]\n"), 29, 1),
+            &RenderOptions::default(),
+        )
+        .unwrap();
+        roxmltree::Document::parse(&svg).unwrap();
+        assert!(!svg.contains("<text"));
+    }
+
+    #[test]
+    fn synthetic_graphics_degrade_to_nonempty_one_pixel_geometry() {
+        for ch in ('\u{2500}'..='\u{2590}').chain('\u{2594}'..='\u{259f}') {
+            assert!(
+                !graphic_path_at(ch, 1, 1, 1).is_empty(),
+                "U+{:04X} disappeared at the minimum cell size",
+                u32::from(ch)
+            );
+        }
+    }
+
+    #[test]
+    fn cell_local_graphics_are_not_merged_across_columns() {
+        let svg = render(
+            &timeline("[0,\"o\",\"┼┼▌▌▖▖\"]\n", 6, 1),
+            &RenderOptions::default(),
+        )
+        .unwrap();
+
+        assert!(svg.contains("M4 0h1v11H4"));
+        assert!(svg.contains("M14 0h1v11H14"));
+        assert!(svg.contains("M20 0h5v22H20"));
+        assert!(svg.contains("M30 0h5v22H30"));
+        assert!(svg.contains("M40 11h5v11H40"));
+        assert!(svg.contains("M50 11h5v11H50"));
     }
 
     #[test]
@@ -1377,7 +2519,7 @@ mod tests {
         #[test]
         fn collects_text_glyphs_across_frames_without_path_only_graphics() {
             let timeline = timeline(
-                "[0,\"o\",\"A╔─\\u001b[3m│\\u001b[0m\\ufffe\"]\n[1,\"o\",\"\\u001b[2J\\u001b[HZ\"]\n",
+                "[0,\"o\",\"A░─\\u001b[3m│\\u001b[0m\\ufffe\"]\n[1,\"o\",\"\\u001b[2J\\u001b[HZ\"]\n",
                 16,
                 1,
             );
@@ -1396,7 +2538,7 @@ mod tests {
 
             assert_eq!(
                 collect_codepoints(&frames),
-                BTreeSet::from([' ', 'A', 'Z', '╔', '│', '\u{fe0e}', '\u{fffd}'])
+                BTreeSet::from([' ', 'A', 'Z', '░', '│', '\u{fe0e}', '\u{fffd}'])
             );
         }
 
