@@ -3,7 +3,6 @@ name = "x"
 publish = false
 
 edition.workspace = true
-homepage.workspace = true
 license.workspace = true
 readme.workspace = true
 repository.workspace = true
